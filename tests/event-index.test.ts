@@ -225,3 +225,46 @@ describe('EventIndex sequence tracking', () => {
     expect(index.lastSequenceNumber).toBe(0);
   });
 });
+
+describe('never losing indexed text', () => {
+  it('keeps orphan-delta text when the base event arrives afterwards', () => {
+    // Losing text here would shrink the guard's only input and turn a real leak
+    // into a passing run.
+    const index = new EventIndex();
+    index.add({
+      type: 'model.message.delta',
+      id: 'm1',
+      threadId: 'main',
+      content: 'PLANTED-900-73-1893',
+    });
+    index.add({ type: 'model.message', id: 'm1', threadId: 'main', content: 'preamble' });
+
+    const visible = index.allModelVisibleText();
+    expect(visible).toContain('PLANTED-900-73-1893');
+    expect(visible).toContain('preamble');
+  });
+
+  it('does not duplicate text when the base repeats what a delta already held', () => {
+    const index = new EventIndex();
+    index.add({ type: 'model.message.delta', id: 'm2', threadId: 'main', content: 'hello' });
+    index.add({ type: 'model.message', id: 'm2', threadId: 'main', content: 'hello world' });
+
+    expect(index.allModelVisibleText()).toBe('hello world');
+  });
+
+  it('leaves the ordinary base-then-delta path unchanged', () => {
+    const index = new EventIndex();
+    index.add({ type: 'model.message', id: 'm3', threadId: 'main', content: 'Hello' });
+    index.add({ type: 'model.message.delta', id: 'm3', threadId: 'main', content: ' world' });
+
+    expect(index.allModelVisibleText()).toBe('Hello world');
+  });
+
+  it('does not add a duplicate entry to the thread order', () => {
+    const index = new EventIndex();
+    index.add({ type: 'model.message.delta', id: 'm4', threadId: 'main', content: 'a' });
+    index.add({ type: 'model.message', id: 'm4', threadId: 'main', content: 'b' });
+
+    expect(index.eventsFor('main')).toHaveLength(1);
+  });
+});

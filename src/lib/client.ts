@@ -11,6 +11,12 @@ export const DEFAULT_BASE_URL = 'http://localhost:8790';
 /** Generous enough to cover a Daytona cold start on the first turn of a session. */
 export const DEFAULT_TIMEOUT_SECONDS = 600;
 
+/**
+ * Preflight budget, separate from the turn budget above: this call only answers
+ * "is the harness up?", so it should fail fast rather than inherit a ten-minute wait.
+ */
+export const REACHABILITY_TIMEOUT_MS = Number(process.env.TRUEFORGE_PREFLIGHT_TIMEOUT_MS) || 5000;
+
 export interface RunConfig {
   baseUrl: string;
   timeoutInSeconds: number;
@@ -44,7 +50,7 @@ export function createClient(runConfig: RunConfig = readRunConfig()): TrueForge 
 
 function harnessFetch(runConfig: RunConfig, path: string): Promise<Response> {
   return fetch(`${runConfig.baseUrl.replace(/\/$/, '')}${path}`, {
-    signal: AbortSignal.timeout(5000),
+    signal: AbortSignal.timeout(REACHABILITY_TIMEOUT_MS),
     ...(runConfig.token ? { headers: { Authorization: `Bearer ${runConfig.token}` } } : {}),
   });
 }

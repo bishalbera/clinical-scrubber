@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Clinical Trial Data Scrubber & Analyst — a TrueForge agent that de-identifies and analyses trial data without raw patient values ever entering model context.",
+  "description": "Clinical Trial Data Scrubber & Analyst \u2014 a TrueForge agent that de-identifies and analyses trial data without raw patient values ever entering model context.",
   "engines": {
     "node": ">=22.14"
   },
@@ -20,9 +20,6 @@
     "lint:py": "python3 -m ruff check .",
     "gen:data": "python3 python/gen_data.py --out-dir data/synthetic --sample",
     "smoke": "tsx src/cli/smoke.ts",
-    "probe:sandbox": "tsx src/cli/probe-sandbox.ts",
-    "probe:upload": "tsx src/cli/probe-upload.ts",
-    "ingest": "tsx src/cli/ingest.ts",
     "dev": "tsx watch src/cli/smoke.ts"
   },
   "dependencies": {

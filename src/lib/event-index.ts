@@ -65,6 +65,16 @@ export function extractText(content: unknown): string {
   return String(content);
 }
 
+function joinText(existing: IndexedEvent, incoming: IndexedEvent): unknown {
+  const kept = extractText(existing.content);
+  const added = extractText(incoming.content);
+  if (kept.length === 0) return incoming.content;
+  if (added.length === 0) return existing.content;
+  if (added.includes(kept)) return incoming.content;
+  if (kept.includes(added)) return existing.content;
+  return `${added}\n${kept}`;
+}
+
 /**
  * All model-visible text carried by a single event.
  *
@@ -165,8 +175,15 @@ export class EventIndex {
       return;
     }
 
-    if (!bucket.events.has(event.id)) bucket.order.push(event.id);
-    bucket.events.set(event.id, event);
+    const existing = bucket.events.get(event.id);
+    if (existing === undefined) {
+      bucket.order.push(event.id);
+      bucket.events.set(event.id, event);
+    } else {
+      // Never drop text already indexed: it is the guard's only input, and losing it
+      // would turn a real leak into a passing run.
+      bucket.events.set(event.id, { ...existing, ...event, content: joinText(existing, event) });
+    }
 
     if (event.type === 'thread.done') bucket.done = true;
   }

@@ -102,6 +102,15 @@ async function main(): Promise<void> {
   if (status !== 'done') {
     console.error(`\nSmoke test did not reach status "done" (got "${status}").`);
     process.exitCode = 1;
+    return;
+  }
+
+  // A turn can reach "done" having produced nothing at all, which is not a working
+  // round-trip. Asserting non-empty rather than exact text: the point is that the
+  // model replied, and pinning the wording would break on harmless paraphrasing.
+  if (index.getMainText().trim().length === 0) {
+    console.error('\nTurn completed but the model produced no text.');
+    process.exitCode = 1;
   }
 }
 
