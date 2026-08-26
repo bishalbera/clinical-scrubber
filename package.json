@@ -1,0 +1,42 @@
+{
+  "name": "clinical-scrubber",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Clinical Trial Data Scrubber & Analyst — a TrueForge agent that de-identifies and analyses trial data without raw patient values ever entering model context.",
+  "engines": {
+    "node": ">=22.14"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test:py": "python3 -m pytest",
+    "lint:py": "python3 -m ruff check .",
+    "gen:data": "python3 python/gen_data.py --out-dir data/synthetic --sample",
+    "smoke": "tsx src/cli/smoke.ts",
+    "probe:sandbox": "tsx src/cli/probe-sandbox.ts",
+    "probe:upload": "tsx src/cli/probe-upload.ts",
+    "ingest": "tsx src/cli/ingest.ts",
+    "dev": "tsx watch src/cli/smoke.ts"
+  },
+  "dependencies": {
+    "@truefoundry/trueforge-sdk": "^0.1.3",
+    "dotenv": "^16.4.7"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^22.10.0",
+    "eslint": "^9.17.0",
+    "prettier": "^3.4.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.18.0",
+    "vitest": "^2.1.8"
+  }
+}

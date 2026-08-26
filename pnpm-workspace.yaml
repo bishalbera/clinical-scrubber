@@ -1,0 +1,4 @@
+# esbuild ships a prebuilt binary that must be unpacked by its postinstall script;
+# tsx and vitest both depend on it. Everything else stays build-script-free.
+allowBuilds:
+  esbuild: true
