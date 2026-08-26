@@ -1,7 +1,7 @@
 /** `pnpm ingest` — run Phase 2 end to end and show what crossed the boundary. */
 
 import { assertHarnessReachable, readRunConfig } from '../lib/client.js';
-import { formatGuardResult } from '../lib/pii-guard.js';
+import { formatGuardResult, scanModelVisibleText } from '../lib/pii-guard.js';
 import { runIngest } from '../pipeline/ingest.js';
 
 function pad(value: string, width: number): string {
@@ -21,6 +21,18 @@ async function main(): Promise<void> {
 
   // Without this a slow run and a stuck run look identical.
   const trace = process.argv.includes('--trace');
+
+  // Trace output is written while the turn streams, long before the guard runs. If the
+  // agent prints a patient row, an unmasked trace would put it in the operator's
+  // terminal and shell history — a real disclosure even though the run later fails.
+  // So everything traced goes through the guard's masker first.
+  const safe = (text: string, limit: number): string => {
+    const masked = scanModelVisibleText(text).hits.reduce(
+      (acc, hit) => acc.split(hit.match).join(`[${hit.label}:redacted]`),
+      text,
+    );
+    return masked.slice(0, limit).replace(/\s+/g, ' ');
+  };
   const started = Date.now();
   const elapsed = (): string => `${((Date.now() - started) / 1000).toFixed(1)}s`;
 
@@ -37,18 +49,16 @@ async function main(): Promise<void> {
                 const args = call.function?.arguments ?? '';
                 console.log(
                   `  → [${elapsed()}] tool ${call.function?.name ?? '?'} ` +
-                    `(${args.length} chars) ${args.slice(0, 120).replace(/\s+/g, ' ')}`,
+                    `(${args.length} chars) ${safe(args, 120)}`,
                 );
               }
             }
             if (event.type === 'tool.response') {
               const body = typeof event.content === 'string' ? event.content : '';
-              console.log(
-                `  ← [${elapsed()}] response (${body.length} chars) ${body.slice(0, 200)}`,
-              );
+              console.log(`  ← [${elapsed()}] response (${body.length} chars) ${safe(body, 200)}`);
             }
             if (event.type === 'model.message' && typeof event.content === 'string') {
-              console.log(`  ✎ [${elapsed()}] message: ${event.content.slice(0, 200)}`);
+              console.log(`  ✎ [${elapsed()}] message: ${safe(event.content, 200)}`);
             }
           },
         }

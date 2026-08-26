@@ -95,8 +95,17 @@ def classify_series(values: pd.Series) -> tuple[str | None, float]:
     return best_type, best_rate
 
 
-def build_verdict(frame: pd.DataFrame) -> dict[str, object]:
-    """Build the model-visible verdict: names, counts, dtypes and rates only."""
+def build_verdict(
+    frame: pd.DataFrame,
+    dtypes: dict[str, str] | None = None,
+    run_id: str | None = None,
+) -> dict[str, object]:
+    """Build the model-visible verdict: names, counts, dtypes and rates only.
+
+    `frame` is read as strings so the detectors see the file as written; `dtypes`
+    carries pandas' inferred types separately, because reporting `object` for every
+    column would be a schema the downstream scrub cannot plan against.
+    """
     columns: list[dict[str, object]] = []
 
     for name in frame.columns:
@@ -107,7 +116,7 @@ def build_verdict(frame: pd.DataFrame) -> dict[str, object]:
         columns.append(
             {
                 "name": str(name),
-                "dtype": str(series.dtype),
+                "dtype": (dtypes or {}).get(str(name), str(series.dtype)),
                 "populated": populated,
                 "blank": int(len(series) - populated),
                 "pii_type": pii_type,
@@ -118,6 +127,7 @@ def build_verdict(frame: pd.DataFrame) -> dict[str, object]:
 
     return {
         "schema_version": 1,
+        "run_id": run_id,
         "row_count": int(len(frame)),
         "column_count": int(len(frame.columns)),
         "pii_columns": [c["name"] for c in columns if c["pii_type"] is not None],
@@ -125,12 +135,29 @@ def build_verdict(frame: pd.DataFrame) -> dict[str, object]:
     }
 
 
-def assert_no_values_leaked(rendered: str, frame: pd.DataFrame) -> None:
+def metadata_strings(frame: pd.DataFrame, verdict: dict[str, object]) -> set[str]:
+    """Strings the verdict is *supposed* to contain: schema, dtypes, detector labels.
+
+    A cell whose value happens to equal one of these — a `site` of "address", say —
+    would otherwise trip the backstop on every run and get it switched off.
+    """
+    out = {str(c) for c in frame.columns}
+    out |= {d.pii_type for d in DETECTORS}
+    out |= {str(c.get("dtype")) for c in verdict.get("columns", [])}  # type: ignore[union-attr]
+    out |= {"schema_version", "row_count", "column_count", "pii_columns", "columns",
+            "name", "dtype", "populated", "blank", "pii_type", "match_rate", "example", "run_id"}
+    return out
+
+
+def assert_no_values_leaked(
+    rendered: str, frame: pd.DataFrame, allowed: set[str] | None = None
+) -> None:
     """Fail if any cell value from the dataframe appears in the rendered verdict."""
+    allowed = allowed or set()
     for column in frame.columns:
         for value in frame[column].dropna().unique():
             text = str(value).strip()
-            if len(text) < MIN_LEAK_CHECK_LENGTH:
+            if len(text) < MIN_LEAK_CHECK_LENGTH or text in allowed:
                 continue
             if text in rendered:
                 raise AssertionError(
@@ -139,14 +166,17 @@ def assert_no_values_leaked(rendered: str, frame: pd.DataFrame) -> None:
                 )
 
 
-def classify_csv(path: Path) -> dict[str, object]:
+def classify_csv(path: Path, run_id: str | None = None) -> dict[str, object]:
     """Load a CSV and return its verdict, with the leak backstop applied."""
     # keep_default_na=False so counts describe the file as written, not as parsed.
     frame = pd.read_csv(path, dtype=str, keep_default_na=False)
-    verdict = build_verdict(frame)
+    inferred = pd.read_csv(path)
+    dtypes = {str(c): str(inferred[c].dtype) for c in inferred.columns}
+
+    verdict = build_verdict(frame, dtypes, run_id)
 
     rendered = json.dumps(verdict, indent=2)
-    assert_no_values_leaked(rendered, frame)
+    assert_no_values_leaked(rendered, frame, metadata_strings(frame, verdict))
 
     return verdict
 
@@ -154,6 +184,7 @@ def classify_csv(path: Path) -> dict[str, object]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Schema-only PII classification.")
     parser.add_argument("csv_path", type=Path, help="raw CSV inside the sandbox")
+    parser.add_argument("--run-id", default=None, help="binds the verdict to one run")
     parser.add_argument(
         "--out",
         type=Path,
@@ -162,7 +193,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    verdict = classify_csv(args.csv_path)
+    verdict = classify_csv(args.csv_path, args.run_id)
     rendered = json.dumps(verdict, indent=2)
 
     if args.out is not None:

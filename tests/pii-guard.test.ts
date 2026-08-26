@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_PII_PATTERNS,
   formatGuardResult,
+  patternCandidates,
   scanModelVisibleText,
 } from '../src/lib/pii-guard.js';
 
@@ -272,5 +273,32 @@ describe('formatGuardResult', () => {
     const output = formatGuardResult(scanModelVisibleText('900-73-1893', { canaries: CANARIES }));
 
     expect(output).not.toContain('900-73-1893');
+  });
+});
+
+describe('adjudication support', () => {
+  it('exposes the matched text so a pattern hit can be checked against the dataset', () => {
+    const result = scanModelVisibleText('ssn=123-45-6789');
+    expect(patternCandidates(result)).toEqual(['123-45-6789']);
+  });
+
+  it('deduplicates repeated matches', () => {
+    const result = scanModelVisibleText('123-45-6789 and again 123-45-6789');
+    expect(patternCandidates(result)).toHaveLength(1);
+  });
+
+  it('excludes canary hits, which need no adjudication', () => {
+    const result = scanModelVisibleText('900-73-1893', { canaries: CANARIES });
+    expect(patternCandidates(result)).not.toContain('900-73-1893');
+  });
+
+  it('returns nothing for clean text', () => {
+    expect(patternCandidates(scanModelVisibleText('n=240, p=0.03'))).toEqual([]);
+  });
+
+  it('still keeps the raw match out of the formatted output', () => {
+    const result = scanModelVisibleText('ssn=123-45-6789');
+    expect(result.hits[0]!.match).toBe('123-45-6789');
+    expect(formatGuardResult(result)).not.toContain('123-45-6789');
   });
 });
