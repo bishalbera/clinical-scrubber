@@ -32,9 +32,11 @@ def test_generates_requested_shape(trial):
     assert all(tuple(r.keys()) == gen_data.TRIAL_COLUMNS for r in records)
 
 
-def test_rejects_degenerate_row_count():
+@pytest.mark.parametrize("rows", [0, 1, 2])
+def test_rejects_degenerate_row_count(rows):
+    """Fewer than 3 rows cannot hold an interior canary."""
     with pytest.raises(ValueError):
-        gen_data.generate_trial(rows=1, seed=SEED)
+        gen_data.generate_trial(rows=rows, seed=SEED)
 
 
 def test_canary_planted_verbatim_exactly_once(trial):
@@ -51,6 +53,12 @@ def test_canary_planted_verbatim_exactly_once(trial):
 def test_canary_is_never_first_or_last(trial):
     records, canary_index, _ = trial
     assert 0 < canary_index < len(records) - 1
+
+
+@pytest.mark.parametrize("rows", [3, 4, 5, 6, 7, 12, 50, 199, 200, 301])
+def test_canary_is_interior_at_every_accepted_row_count(rows):
+    _, canary_index, _ = gen_data.generate_trial(rows=rows, seed=SEED)
+    assert 0 < canary_index < rows - 1
 
 
 def test_canary_is_not_derivable_from_the_seed():

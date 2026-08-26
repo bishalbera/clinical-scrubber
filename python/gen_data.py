@@ -168,13 +168,13 @@ def generate_trial(
     Effect sizes make the primary endpoint significant and the safety endpoint not.
     Returns the rows, the canary row index, and the minted canary.
     """
-    if rows < 2:
-        raise ValueError("generate_trial() needs at least 2 rows")
+    if rows < 3:
+        raise ValueError("generate_trial() needs at least 3 rows to keep the canary interior")
 
     rand = random.Random(seed)
 
     # Never first or last: both are reachable by an accidental head/tail.
-    canary_row_index = int(rows * 0.42)
+    canary_row_index = min(max(int(rows * 0.42), 1), rows - 2)
 
     records: list[dict[str, str]] = []
     plain_ssns: list[str] = []

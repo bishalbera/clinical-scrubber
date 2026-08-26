@@ -42,13 +42,19 @@ export function createClient(runConfig: RunConfig = readRunConfig()): TrueForge 
   });
 }
 
+function harnessFetch(runConfig: RunConfig, path: string): Promise<Response> {
+  return fetch(`${runConfig.baseUrl.replace(/\/$/, '')}${path}`, {
+    signal: AbortSignal.timeout(5000),
+    ...(runConfig.token ? { headers: { Authorization: `Bearer ${runConfig.token}` } } : {}),
+  });
+}
+
 /** Fail fast with an actionable message when the harness is not reachable. */
 export async function assertHarnessReachable(
   runConfig: RunConfig = readRunConfig(),
 ): Promise<void> {
-  const url = `${runConfig.baseUrl.replace(/\/$/, '')}/api/v1/capabilities`;
   try {
-    const response = await fetch(url, { signal: AbortSignal.timeout(5000) });
+    const response = await harnessFetch(runConfig, '/api/v1/capabilities');
     if (!response.ok) {
       throw new Error(`harness responded ${response.status} ${response.statusText}`);
     }
@@ -68,8 +74,7 @@ export async function listConfiguredModels(
   runConfig: RunConfig = readRunConfig(),
 ): Promise<string[]> {
   try {
-    const url = `${runConfig.baseUrl.replace(/\/$/, '')}/api/v1/models`;
-    const response = await fetch(url, { signal: AbortSignal.timeout(5000) });
+    const response = await harnessFetch(runConfig, '/api/v1/models');
     if (!response.ok) return [];
     const body = (await response.json()) as { data?: unknown };
     if (!Array.isArray(body.data)) return [];
