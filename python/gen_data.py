@@ -296,6 +296,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out-dir", default="data/synthetic", type=Path)
     parser.add_argument("--rows", default=DEFAULT_ROWS, type=int)
     parser.add_argument("--seed", default=DEFAULT_SEED, type=int)
+    parser.add_argument("--run-id", default=None, help="binds these artifacts to one run")
     parser.add_argument(
         "--sample",
         action="store_true",
@@ -318,6 +319,7 @@ def main(argv: list[str] | None = None) -> int:
                 "name": canary.name,
                 "row_index": canary_row_index,
                 "subject_id": records[canary_row_index]["subject_id"],
+                "run_id": args.run_id,
             },
             indent=2,
         )
@@ -339,6 +341,7 @@ def main(argv: list[str] | None = None) -> int:
 
     # Printed, therefore model-visible: counts, column names, a hash. No values.
     summary = {
+        "run_id": args.run_id,
         "rows": len(records),
         "columns": list(TRIAL_COLUMNS),
         "raw_path": str(raw_path),
