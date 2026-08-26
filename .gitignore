@@ -1,0 +1,27 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# Local Python env for the pytest suites (`uv venv .venv`). The scripts under
+# python/ are the source of truth and also run inside the sandbox.
+.venv/
+__pycache__/
+.pytest_cache/
+
+.env
+.env.local
+
+# Generated synthetic datasets. Nothing here is real patient data, but generated
+# files are large and reproducible from `pnpm gen:data`, so they stay out of git.
+# The one exception is the tiny committed sample (canary-free) used by tests.
+data/synthetic/*
+!data/synthetic/sample.csv
+
+# Artifacts pulled back out of the sandbox at demo time.
+out/
+
+# Which TrueForge session this checkout is reusing. Machine-local by nature.
+.trueforge-session.json
+
+.DS_Store
