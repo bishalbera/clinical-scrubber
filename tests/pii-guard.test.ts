@@ -210,10 +210,30 @@ describe('the guard does not become the leak', () => {
     expect(result.hits[0]!.excerpt).toContain('900-73-1893');
   });
 
-  it('keeps surrounding context so a hit can be located', () => {
+  it('locates a hit by offset without echoing its surroundings', () => {
+    const text = 'row 126 of trial_raw.csv had 900-73-1893 in it';
+    const result = scanModelVisibleText(text, { canaries: CANARIES, patterns: [] });
+
+    expect(result.hits[0]!.excerpt).not.toContain('trial_raw.csv');
+    expect(text.slice(result.hits[0]!.index, result.hits[0]!.index + 11)).toBe('900-73-1893');
+  });
+
+  it('does not print the neighbours of a leaked CSV row', () => {
+    // Masking only the match is not enough: the characters either side of a matched
+    // SSN are the same patient's name, MRN and date of birth.
+    const row = 'STUDY-0042,Marcus Okonkwo,900-11-2222,MRN497357,1981-12-07,m.o@example.com';
+    const output = formatGuardResult(scanModelVisibleText(row));
+
+    for (const value of ['Marcus Okonkwo', '900-11-2222', 'MRN497357', '1981-12-07']) {
+      expect(output).not.toContain(value);
+    }
+  });
+
+  it('shows context only under reveal, which is an explicit opt-in', () => {
     const result = scanModelVisibleText('row 126 of trial_raw.csv had 900-73-1893 in it', {
       canaries: CANARIES,
       patterns: [],
+      reveal: true,
     });
 
     expect(result.hits[0]!.excerpt).toContain('trial_raw.csv');
