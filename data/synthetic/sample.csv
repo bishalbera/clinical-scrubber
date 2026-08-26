@@ -1,0 +1,13 @@
+subject_id,patient_name,ssn,mrn,dob,email,phone,address,site,arm,baseline,followup,outcome_measure,adverse_event
+STUDY-0001,RAFAEL SANDERQUIST,916-73-2361,MRN248878,05/11/1944,rafael.sanderquist@example.com,(555) 555-0182,"806 Tanner Walk, Draysfield, NC 27128",SITE-01, Treatment ,71.6,,,yes
+STUDY-0002,Rosa Marchetti,945-96-8777,MRN403614,1952-06-17,rosa.marchetti@example.com,(555) 555-0149,"5630 foundry street, cedar falls, ia 50718",SITE-02,Placebo, 50.9,50.5,-0.4,no
+STUDY-0003,Sofia Nakamura,975-06-0585,MRN684555,"Jan 6, 1984",sofia.nakamura@example.com,555.555.0191,"658 Pike Hollow Road, Belmont Ridge, PA 17871",SITE-02,Treatment,66.2,55.2,-11.0,0
+STUDY-0004,rosa delacroix,973-75-8683,MRN222057,1961-09-27,rosa.delacroix@example.com,(555) 555-0153,"7814 tanner walk, cedar falls, ia 50720",SITE-03,Placebo,54.7,47.3,-7.4,0
+STUDY-0005,ELLIS KOWALCZYK,902-63-2870,MRN255676,03/23/1951,ellis.kowalczyk@example.com,555-555-0104,"1874 Marigold Terrace, Draysfield, NC 27488",SITE-03,treatment,58.1,54.0,-4.2,No
+STUDY-0006,Beatriz Nakamura,916-93-7290,MRN857430,04/26/1960,BEATRIZ.NAKAMURA@EXAMPLE.COM,(555) 555-0120,"1176 ASHBY COURT, BELMONT RIDGE, PA 17306",SITE-02,Placebo,46.9,43.3,-3.6,no
+STUDY-0007,Hollis Underhill,932-64-8367,MRN742518,"May 19, 1970",hollis.underhill@example.com,555.555.0195,"4513 wexham close, ashford, oh 44400",SITE-01,Treatment,63.4,47.2,-16.2,No
+STUDY-0008,Hollis Trevalyan,920-59-4917,MRN945707,24 Sep 1980,hollis.trevalyan@example.com,(555) 555-0117,"2714 Foundry Street, Elmhurst Bay, OR 97552",SITE-04,Placebo,62.5 pts,70.1 pts,7.6,no
+STUDY-0009,Delphine Achterberg,905-00-4360,MRN990345,1981-12-20, delphine.achterberg@example.com ,(555) 555-0108,"2570 Alder Row, Belmont Ridge, PA 17520",SITE-03,Treatment,59.4,61.0,1.7,Yes
+STUDY-0010,Alice Marchetti,990-36-9495,MRN621324,1950-06-23,alice.marchetti@example.com,(555) 555-0181,"1767 Foundry Street, Elmhurst Bay, OR 97716",SITE-02,PLACEBO,47.2,51.2 pts,4.0,no
+STUDY-0011,Tomas Nakamura,902-38-3846,MRN245829,"Sep 5, 1984",tomas.nakamura@example.com,(555) 555-0193,"7274 Larkspur Avenue, Cedar Falls, IA 50473",SITE-03,Treatment,54.0,52.0,-2.0,0
+STUDY-0012, Ibrahim Sanderquist ,927-75-8315,MRN815013,1952-03-19,ibrahim.sanderquist@example.com,(555) 555-0123," 619 Tanner Walk, Belmont Ridge, PA 17441 ",SITE-04,Placebo,73.2,68.1,-5.1,FALSE
