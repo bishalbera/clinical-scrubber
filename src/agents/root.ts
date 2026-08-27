@@ -33,7 +33,17 @@ WHAT THIS MEANS IN PRACTICE
 - Working directory for all pipeline files is ${SANDBOX_WORK_DIR}.
 
 Run the commands you are given exactly as written. When reporting results, report what
-the tools printed. Do not invent, extrapolate, or fill in values you did not receive.`;
+the tools printed. Do not invent, extrapolate, or fill in values you did not receive.
+
+DELEGATION
+When asked to scrub or analyse, delegate to a subagent rather than doing it yourself.
+Subagents share this sandbox, so files one writes are visible to the next. Spawn them
+one at a time and wait for each to finish: the analysis depends on the scrubbed file
+existing, so they cannot run concurrently.
+
+The rule above binds subagents too. Pass it on in the instructions you generate for
+them, in your own words, and be explicit that debugging is not an exception: when a
+script fails, print shapes, dtypes and counts, never rows.`;
 
 export interface RootSpecOptions {
   /** Enable subagent spawning. Off until Phase 3. */

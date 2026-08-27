@@ -1,0 +1,171 @@
+/**
+ * The boundary check, in one place.
+ *
+ * It lives here rather than in each pipeline stage because the first version did not:
+ * `scrub-analyze.ts` was written against an earlier copy that tested only
+ * `canaryClean`, which let a leak of any row except the single planted one pass. One
+ * implementation, one place to harden.
+ *
+ * Three steps, in order of certainty:
+ *
+ *  1. Scan the whole session, not just the latest turn — a reused session keeps
+ *     earlier turns in the model's context.
+ *  2. A canary hit is proof: the value was minted inside the sandbox and never told
+ *     to the model, so its presence has one explanation.
+ *  3. An identifier-shaped hit is only suspicious, because agent-authored code can
+ *     contain examples. That is settled inside the sandbox against the real data, and
+ *     only counts come back.
+ */
+
+import type { TrueForge } from '@truefoundry/trueforge-sdk';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import { canaryRecord, type CanarySet } from './canary.js';
+import { EventIndex, type IndexedEvent } from './event-index.js';
+import {
+  formatGuardResult,
+  patternCandidates,
+  scanModelVisibleText,
+  type GuardResult,
+} from './pii-guard.js';
+import {
+  execResults,
+  extractJsonObjects,
+  fileAttachment,
+  SANDBOX_UPLOAD_DIR,
+  SANDBOX_WORK_DIR,
+} from './sandbox.js';
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+const PYTHON_DIR = resolve(HERE, '../../python');
+
+/**
+ * Everything the model could have seen in this session.
+ *
+ * Falls back to the turn's own index if the session listing is unavailable, so a
+ * transport failure narrows the check rather than removing it.
+ */
+export async function sessionVisibleText(
+  client: TrueForge,
+  sessionId: string,
+  fallback: EventIndex,
+): Promise<string> {
+  try {
+    const whole = new EventIndex();
+    const page = await client.sessions.listEvents(sessionId);
+    const entries = (page as { data?: Array<{ event?: unknown }> }).data ?? [];
+    for (const entry of entries) {
+      if (entry.event != null) whole.add(entry.event as IndexedEvent);
+    }
+    const text = whole.allModelVisibleText();
+    return text.length > 0 ? text : fallback.allModelVisibleText();
+  } catch {
+    return fallback.allModelVisibleText();
+  }
+}
+
+/** How many of `candidates` actually occur in the sandbox's data files. */
+export async function adjudicateCandidates(
+  client: TrueForge,
+  sessionId: string,
+  candidates: readonly string[],
+  dataPaths: readonly string[],
+): Promise<number> {
+  const listPath = `${SANDBOX_WORK_DIR}/.candidates.json`;
+  const index = new EventIndex();
+
+  const stream = await client.sessions.createTurnStream(sessionId, {
+    input: [
+      {
+        type: 'user.message',
+        content: [
+          {
+            type: 'text',
+            text:
+              `Write this JSON to ${listPath}, then run the command below and paste its ` +
+              `output verbatim. Do not print the data files.\n\n` +
+              `${JSON.stringify(candidates)}\n\n` +
+              `python3 ${SANDBOX_UPLOAD_DIR}/adjudicate.py ${listPath} ${dataPaths.join(' ')}`,
+          },
+          fileAttachment(resolve(PYTHON_DIR, 'adjudicate.py')),
+        ],
+      },
+    ],
+  });
+  for await (const { data: event, id } of stream.withMetadata()) {
+    index.add(event as unknown as IndexedEvent, id);
+  }
+
+  const payload = execResults(index.allEvents())
+    .flatMap((r) => extractJsonObjects(r.output))
+    .find(
+      (o): o is Record<string, unknown> =>
+        o !== null &&
+        typeof o === 'object' &&
+        (o as Record<string, unknown>).check === 'adjudicate',
+    );
+
+  if (payload === undefined) {
+    // Unable to decide. A boundary check that fails open is not a boundary check.
+    throw new Error(
+      'Could not adjudicate identifier-shaped strings against the dataset. ' +
+        'Refusing to report a clean run without that answer.',
+    );
+  }
+
+  const findings = Array.isArray(payload.findings)
+    ? (payload.findings as Array<{ occurrences?: number }>)
+    : [];
+  return findings.filter((f) => (f.occurrences ?? 0) > 0).length;
+}
+
+export interface BoundaryCheckOptions {
+  /** Named in the failure message, so a breach says which stage produced it. */
+  readonly stage: string;
+  readonly dataPaths?: readonly string[] | undefined;
+  readonly onStep?: ((message: string) => void) | undefined;
+}
+
+/**
+ * Assert that no patient value reached model context. Throws if one did.
+ *
+ * Callers get a `GuardResult` only from a run that passed, because the only safe
+ * thing to do with a breached result is refuse to use it.
+ */
+export async function assertBoundaryHolds(
+  client: TrueForge,
+  sessionId: string,
+  index: EventIndex,
+  canaries: CanarySet,
+  options: BoundaryCheckOptions,
+): Promise<GuardResult> {
+  const { stage, dataPaths = [`${SANDBOX_WORK_DIR}/trial_raw.csv`], onStep } = options;
+
+  const scanned = await sessionVisibleText(client, sessionId, index);
+  const guard = scanModelVisibleText(scanned, { canaries: canaryRecord(canaries) });
+
+  if (!guard.canaryClean) {
+    throw new Error(
+      `PII BOUNDARY BREACHED during ${stage}.\n\n${formatGuardResult(guard)}\n\n` +
+        'A canary minted inside the sandbox reached model-visible context. ' +
+        'The only way that happens is if something read the raw data.',
+    );
+  }
+
+  const candidates = patternCandidates(guard);
+  if (candidates.length > 0) {
+    onStep?.(`adjudicating ${candidates.length} identifier-shaped strings`);
+    const leaked = await adjudicateCandidates(client, sessionId, candidates, dataPaths);
+    if (leaked > 0) {
+      throw new Error(
+        `PII BOUNDARY BREACHED during ${stage}.\n\n${formatGuardResult(guard)}\n\n` +
+          `${leaked} of ${candidates.length} identifier-shaped strings in model-visible ` +
+          'context were found in the data. They are patient values, not examples.',
+      );
+    }
+    onStep?.('none of them appear in the data');
+  }
+
+  return guard;
+}

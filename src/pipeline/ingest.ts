@@ -13,15 +13,11 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { rootAgentSpec } from '../agents/root.js';
-import { CANARY_FILENAME, canaryRecord, parseCanaryFile, type CanarySet } from '../lib/canary.js';
+import { CANARY_FILENAME, parseCanaryFile, type CanarySet } from '../lib/canary.js';
+import { assertBoundaryHolds } from '../lib/boundary.js';
 import { createClient, readRunConfig, type RunConfig } from '../lib/client.js';
 import { EventIndex, type IndexedEvent } from '../lib/event-index.js';
-import {
-  formatGuardResult,
-  patternCandidates,
-  scanModelVisibleText,
-  type GuardResult,
-} from '../lib/pii-guard.js';
+import type { GuardResult } from '../lib/pii-guard.js';
 import {
   downloadSandboxText,
   execResults,
@@ -107,7 +103,7 @@ async function resolveSession(
   }
 
   const { data: session } = await client.sessions.create({
-    agent: { spec: rootAgentSpec(runConfig) },
+    agent: { spec: rootAgentSpec(runConfig, { subagents: true }) },
   });
   writeStoredSession({ sessionId: session.id, model: runConfig.model });
   onStep?.(`new session ${session.id}`);
@@ -140,85 +136,6 @@ ${command}
 
 Then report, in prose: how many rows the dataset has, and which columns were flagged
 with which identifier type. Report only what the command printed.`;
-}
-
-/**
- * Everything the model could have seen in this session, not just this turn.
- *
- * Falls back to the turn's own index if the session listing is unavailable, so a
- * transport failure degrades to the narrower check rather than to no check.
- */
-async function sessionVisibleText(
-  client: TrueForge,
-  sessionId: string,
-  fallback: EventIndex,
-): Promise<string> {
-  try {
-    const whole = new EventIndex();
-    const page = await client.sessions.listEvents(sessionId);
-    const entries = (page as { data?: Array<{ event?: unknown }> }).data ?? [];
-    for (const entry of entries) {
-      if (entry.event != null) whole.add(entry.event as IndexedEvent);
-    }
-    const text = whole.allModelVisibleText();
-    return text.length > 0 ? text : fallback.allModelVisibleText();
-  } catch {
-    return fallback.allModelVisibleText();
-  }
-}
-
-/** Ask the sandbox how many candidates actually occur in the raw data. */
-async function adjudicateCandidates(
-  client: TrueForge,
-  sessionId: string,
-  candidates: readonly string[],
-): Promise<number> {
-  const listPath = `${SANDBOX_WORK_DIR}/.candidates.json`;
-  const index = new EventIndex();
-
-  const stream = await client.sessions.createTurnStream(sessionId, {
-    input: [
-      {
-        type: 'user.message',
-        content: [
-          {
-            type: 'text',
-            text:
-              `Write this JSON to ${listPath}, then run the command below and paste its ` +
-              `output verbatim. Do not print the file.\n\n` +
-              `${JSON.stringify(candidates)}\n\n` +
-              `python3 ${SANDBOX_UPLOAD_DIR}/adjudicate.py ${listPath} ${RAW_CSV}`,
-          },
-          fileAttachment(resolve(PYTHON_DIR, 'adjudicate.py')),
-        ],
-      },
-    ],
-  });
-  for await (const { data: event, id } of stream.withMetadata()) {
-    index.add(event as unknown as IndexedEvent, id);
-  }
-
-  const payload = execResults(index.allEvents())
-    .flatMap((r) => extractJsonObjects(r.output))
-    .find(
-      (o): o is Record<string, unknown> =>
-        o !== null &&
-        typeof o === 'object' &&
-        (o as Record<string, unknown>).check === 'adjudicate',
-    );
-
-  if (payload === undefined) {
-    // Unable to decide: treat as a leak. A boundary check that fails open is not one.
-    throw new Error(
-      'Could not adjudicate identifier-shaped strings against the dataset. ' +
-        'Refusing to report a clean run without that answer.',
-    );
-  }
-
-  const findings = Array.isArray(payload.findings)
-    ? (payload.findings as Array<{ occurrences?: number }>)
-    : [];
-  return findings.filter((f) => (f.occurrences ?? 0) > 0).length;
 }
 
 /** Run the ingest turn. Throws if the canary reached model context. */
@@ -321,36 +238,10 @@ export async function runIngest(
 
   // --- boundary check ---
 
-  // Scans the whole session, not just this turn: a reused session keeps earlier turns
-  // in the model's context, so checking only the latest stream would clear a context
-  // that is still carrying whatever an earlier turn put there.
-  const scanned = await sessionVisibleText(client, sessionId, index);
-  const guard = scanModelVisibleText(scanned, { canaries: canaryRecord(canaries) });
-
-  if (!guard.canaryClean) {
-    throw new Error(
-      `PII BOUNDARY BREACHED during ingest.\n\n${formatGuardResult(guard)}\n\n` +
-        'A canary minted inside the sandbox reached model-visible context. ' +
-        'The only way that happens is if something read the raw data.',
-    );
-  }
-
-  // A canary hit is proof, but the canary is one row in three hundred. Identifier
-  // shaped strings are only suspicious — they may be examples an agent typed into its
-  // own code — so the question is settled inside the sandbox, where the data is.
-  const candidates = patternCandidates(guard);
-  if (candidates.length > 0) {
-    onStep?.(`adjudicating ${candidates.length} identifier-shaped strings`);
-    const leaked = await adjudicateCandidates(client, sessionId, candidates);
-    if (leaked > 0) {
-      throw new Error(
-        `PII BOUNDARY BREACHED during ingest.\n\n${formatGuardResult(guard)}\n\n` +
-          `${leaked} of ${candidates.length} identifier-shaped strings in model-visible ` +
-          'context were found in the raw dataset. They are patient values, not examples.',
-      );
-    }
-    onStep?.('none of them appear in the raw dataset');
-  }
+  const guard = await assertBoundaryHolds(client, sessionId, index, canaries, {
+    stage: 'ingest',
+    onStep,
+  });
 
   return {
     sessionId,
