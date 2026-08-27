@@ -25,6 +25,10 @@ import pandas as pd
 #: values are SSN-shaped is an SSN column with data-quality problems.
 MATCH_THRESHOLD = 0.5
 
+#: Fraction of distinct values above which an id-shaped column is treated as a direct
+#: participant identifier rather than a shared code.
+UNIQUENESS_THRESHOLD = 0.95
+
 #: Short values like "Y" and "1" appear in the verdict as ordinary digits, so the
 #: backstop skips them rather than firing on every run.
 MIN_LEAK_CHECK_LENGTH = 5
@@ -58,6 +62,9 @@ DETECTORS: tuple[Detector, ...] = (
         ),
     ),
     Detector("mrn", re.compile(r"^[A-Za-z]{2,4}\d{5,10}$")),
+    # A per-participant study number is a direct identifier under HIPAA Safe Harbor
+    # even though it carries no personal detail: it re-links every row to one person.
+    Detector("study_id", re.compile(r"^[A-Za-z]{2,10}[-_]\d{3,10}$")),
     # House number, then something, then a two-letter state and a ZIP.
     Detector(
         "address",
@@ -91,6 +98,13 @@ def classify_series(values: pd.Series) -> tuple[str | None, float]:
 
     if best_rate < MATCH_THRESHOLD:
         return None, best_rate
+
+    # A study-id shape only identifies a participant when it is near-unique per row.
+    # A shared code such as a site or cohort label is not a direct identifier.
+    if best_type == "study_id":
+        distinct = len(set(populated))
+        if distinct / len(populated) < UNIQUENESS_THRESHOLD:
+            return None, best_rate
 
     return best_type, best_rate
 

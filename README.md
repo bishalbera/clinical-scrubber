@@ -65,7 +65,7 @@ Built in phases; this is the state of the tree.
 | ----- | ----------------------------------------------------- | ------ |
 | 1     | Scaffold, synthetic data generator, SDK round-trip    | ✅     |
 | 2     | Sandbox ingest, schema-only classification, PII guard | ✅     |
-| 3     | Compliance + Bio-Stat subagents                       | ⬜     |
+| 3     | Compliance + Bio-Stat subagents                       | ✅     |
 | 4     | CMO approval gate on scrub script **and** methodology | ⬜     |
 | 5     | Report generation, storage push, canary leak proof    | ⬜     |
 | 6     | Resume-after-disconnect, compliance Skill, self-audit | ⬜     |
@@ -134,18 +134,19 @@ standing between the sandbox and the first step of the pipeline.
 
 ## Commands
 
-| Command             | Does                                                      |
-| ------------------- | --------------------------------------------------------- |
-| `pnpm ingest`       | Run Phase 2 against a live sandbox (`--fresh`, `--trace`) |
-| `pnpm gen:data`     | Generate the synthetic trial CSV locally                  |
-| `pnpm smoke`        | Verify the harness round-trip                             |
-| `pnpm probe:upload` | Re-verify how attachments reach the sandbox               |
-| `pnpm test`         | Run the vitest suites                                     |
-| `pnpm test:py`      | Run the pytest suites                                     |
-| `pnpm typecheck`    | `tsc --noEmit` under strict settings                      |
-| `pnpm lint`         | ESLint                                                    |
-| `pnpm lint:py`      | ruff                                                      |
-| `pnpm format`       | Prettier                                                  |
+| Command             | Does                                             |
+| ------------------- | ------------------------------------------------ |
+| `pnpm pipeline`     | Full run: ingest, scrub, analyse, boundary check |
+| `pnpm ingest`       | Ingest and classify only (`--fresh`, `--trace`)  |
+| `pnpm gen:data`     | Generate the synthetic trial CSV locally         |
+| `pnpm smoke`        | Verify the harness round-trip                    |
+| `pnpm probe:upload` | Re-verify how attachments reach the sandbox      |
+| `pnpm test`         | Run the vitest suites                            |
+| `pnpm test:py`      | Run the pytest suites                            |
+| `pnpm typecheck`    | `tsc --noEmit` under strict settings             |
+| `pnpm lint`         | ESLint                                           |
+| `pnpm lint:py`      | ruff                                             |
+| `pnpm format`       | Prettier                                         |
 
 The pytest suites need pandas: `uv venv .venv && uv pip install -p .venv/bin/python
 pandas scipy pytest ruff`. `pnpm gen:data` does not — it runs on a bare `python3`.

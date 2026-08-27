@@ -23,6 +23,7 @@
     "probe:sandbox": "tsx src/cli/probe-sandbox.ts",
     "probe:upload": "tsx src/cli/probe-upload.ts",
     "ingest": "tsx src/cli/ingest.ts",
+    "pipeline": "tsx src/cli/pipeline.ts",
     "dev": "tsx watch src/cli/smoke.ts"
   },
   "dependencies": {
