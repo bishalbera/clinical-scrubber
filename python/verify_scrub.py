@@ -22,7 +22,9 @@ import pandas as pd
 from classify import classify_series
 
 #: Column kinds that must not survive a scrub in any form.
-DISALLOWED_PII_TYPES = frozenset({"ssn", "name", "email", "phone", "address", "dob", "mrn"})
+DISALLOWED_PII_TYPES = frozenset(
+    {"ssn", "name", "email", "phone", "address", "dob", "mrn", "study_id"}
+)
 
 
 def surviving_identifiers(frame: pd.DataFrame) -> list[dict[str, object]]:
@@ -42,7 +44,9 @@ def canary_survived(scrubbed_text: str, canary: dict[str, object]) -> bool:
     return any(isinstance(v, str) and v and v in scrubbed_text for v in values)
 
 
-def verify(scrubbed_path: Path, canary_path: Path | None) -> dict[str, object]:
+def verify(
+    scrubbed_path: Path, canary_path: Path | None, run_id: str | None = None
+) -> dict[str, object]:
     frame = pd.read_csv(scrubbed_path, dtype=str, keep_default_na=False)
     survivors = surviving_identifiers(frame)
 
@@ -53,11 +57,29 @@ def verify(scrubbed_path: Path, canary_path: Path | None) -> dict[str, object]:
         "columns": [str(c) for c in frame.columns],
         "surviving_identifier_columns": survivors,
         "canary_present": None,
+        "run_id": run_id,
         "passed": len(survivors) == 0,
     }
 
-    if canary_path is not None and canary_path.exists():
-        canary = json.loads(canary_path.read_text(encoding="utf-8"))
+    if canary_path is not None:
+        # Asking for the canary check and not getting it must fail. Otherwise deleting
+        # the file silently disables the sharpest check in the pipeline while the
+        # verifier still reports a pass.
+        if not canary_path.exists():
+            result["passed"] = False
+            result["error"] = f"canary file not found: {canary_path}"
+            return result
+        try:
+            canary = json.loads(canary_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            result["passed"] = False
+            result["error"] = f"canary file is not valid JSON: {exc.msg}"
+            return result
+        if not isinstance(canary, dict) or not canary.get("ssn") or not canary.get("name"):
+            result["passed"] = False
+            result["error"] = "canary file is missing ssn or name"
+            return result
+
         present = canary_survived(scrubbed_path.read_text(encoding="utf-8"), canary)
         result["canary_present"] = present
         result["passed"] = bool(result["passed"] and not present)
@@ -69,9 +91,10 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Verify a scrubbed dataset.")
     parser.add_argument("scrubbed_path", type=Path)
     parser.add_argument("--canary", type=Path, default=None)
+    parser.add_argument("--run-id", default=None, help="binds the result to one run")
     args = parser.parse_args(argv)
 
-    result = verify(args.scrubbed_path, args.canary)
+    result = verify(args.scrubbed_path, args.canary, args.run_id)
     print(json.dumps(result, indent=2))
     return 0 if result["passed"] else 1
 

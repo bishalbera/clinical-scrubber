@@ -40,6 +40,9 @@ import {
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PYTHON_DIR = resolve(HERE, '../../python');
 
+/** Guards against an unbounded walk; exceeding it fails rather than scanning partially. */
+const MAX_SESSION_EVENTS = 20000;
+
 /**
  * Everything the model could have seen in this session.
  *
@@ -53,14 +56,34 @@ export async function sessionVisibleText(
 ): Promise<string> {
   try {
     const whole = new EventIndex();
-    const page = await client.sessions.listEvents(sessionId);
-    const entries = (page as { data?: Array<{ event?: unknown }> }).data ?? [];
-    for (const entry of entries) {
-      if (entry.event != null) whole.add(entry.event as IndexedEvent);
+    let seen = 0;
+
+    // listEvents is paginated and newest-first. Reading only the first page would
+    // silently exclude older turns of a reused session — exactly the turns the
+    // session-wide scan exists to cover.
+    let page = await client.sessions.listEvents(sessionId);
+    for (;;) {
+      for (const entry of page.data as Array<{ event?: unknown }>) {
+        if (entry.event != null) {
+          whole.add(entry.event as IndexedEvent);
+          seen += 1;
+        }
+      }
+      if (seen >= MAX_SESSION_EVENTS || !page.hasNextPage()) break;
+      page = await page.getNextPage();
     }
+
+    if (seen >= MAX_SESSION_EVENTS) {
+      throw new Error(
+        `Session has more than ${MAX_SESSION_EVENTS} events; refusing to claim a ` +
+          'complete scan of a session this large.',
+      );
+    }
+
     const text = whole.allModelVisibleText();
     return text.length > 0 ? text : fallback.allModelVisibleText();
-  } catch {
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('refusing to claim')) throw error;
     return fallback.allModelVisibleText();
   }
 }

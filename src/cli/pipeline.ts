@@ -43,6 +43,7 @@ async function main(): Promise<void> {
     ingest.sessionId,
     ingest.verdict,
     ingest.canaries,
+    ingest.runId,
     { onStep: step },
     runConfig,
     client,

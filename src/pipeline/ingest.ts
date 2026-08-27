@@ -57,6 +57,8 @@ export interface Verdict {
 
 export interface IngestResult {
   readonly sessionId: string;
+  /** Binds this run's sandbox artifacts; later stages must quote it back. */
+  readonly runId: string;
   readonly turnId: string;
   readonly sandboxId: string | undefined;
   readonly verdict: Verdict;
@@ -245,6 +247,7 @@ export async function runIngest(
 
   return {
     sessionId,
+    runId,
     turnId,
     sandboxId: index.sandboxId,
     verdict,

@@ -127,3 +127,60 @@ def test_reports_row_count_and_columns(tmp_path: Path):
 
     assert result["row_count"] == 3
     assert result["columns"] == ["age_band", "arm"]
+
+
+def test_missing_canary_file_fails_rather_than_skipping(tmp_path: Path):
+    """Deleting the canary file must not silently disable the sharpest check."""
+    frame = pd.DataFrame({"age_band": ["45-54", "55-64"], "arm": ["t", "p"]})
+    result = verify_scrub.verify(write(tmp_path, frame), tmp_path / "absent.json")
+
+    assert result["passed"] is False
+    assert "not found" in str(result["error"])
+
+
+def test_malformed_canary_file_fails(tmp_path: Path):
+    bad = tmp_path / ".canary.json"
+    bad.write_text("{not json")
+    frame = pd.DataFrame({"age_band": ["45-54"], "arm": ["t"]})
+    result = verify_scrub.verify(write(tmp_path, frame), bad)
+
+    assert result["passed"] is False
+    assert "valid JSON" in str(result["error"])
+
+
+def test_canary_file_without_values_fails(tmp_path: Path):
+    bad = tmp_path / ".canary.json"
+    bad.write_text(json.dumps({"row_index": 3}))
+    frame = pd.DataFrame({"age_band": ["45-54"], "arm": ["t"]})
+    result = verify_scrub.verify(write(tmp_path, frame), bad)
+
+    assert result["passed"] is False
+    assert "missing ssn or name" in str(result["error"])
+
+
+def test_surviving_study_id_fails_the_check(tmp_path: Path):
+    """A per-participant study number re-links every row to one person."""
+    frame = pd.DataFrame(
+        {"subject_id": ["STUDY-0001", "STUDY-0002", "STUDY-0003"], "arm": ["t", "p", "t"]}
+    )
+    result = verify_scrub.verify(write(tmp_path, frame), None)
+
+    assert result["passed"] is False
+    assert result["surviving_identifier_columns"][0]["pii_type"] == "study_id"
+
+
+def test_shared_site_codes_are_not_direct_identifiers(tmp_path: Path):
+    """A code many participants share identifies a site, not a person."""
+    frame = pd.DataFrame(
+        {"site": ["SITE-001", "SITE-001", "SITE-002", "SITE-002"], "arm": ["t", "p", "t", "p"]}
+    )
+    result = verify_scrub.verify(write(tmp_path, frame), None)
+
+    assert result["passed"] is True
+
+
+def test_run_id_is_echoed(tmp_path: Path):
+    frame = pd.DataFrame({"age_band": ["45-54"], "arm": ["t"]})
+    result = verify_scrub.verify(write(tmp_path, frame), None, "run-abc")
+
+    assert result["run_id"] == "run-abc"
