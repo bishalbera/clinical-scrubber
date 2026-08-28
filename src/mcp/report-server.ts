@@ -16,7 +16,24 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 
 export const REPORT_TOOL_NAME = 'generate_final_report';
 export const REPORT_MCP_SERVER = 'clinical-report-release';
-export const DEFAULT_MCP_PORT = 8791;
+export const DEFAULT_MCP_PORT = Number(process.env.REPORT_SERVER_PORT) || 8791;
+
+/**
+ * Address the server binds to. Loopback by default, which is right when the harness
+ * runs on this machine and wrong the moment it does not.
+ */
+export const REPORT_SERVER_HOST = process.env.REPORT_SERVER_HOST || '127.0.0.1';
+
+/**
+ * URL the harness is told to call.
+ *
+ * Separate from the bind address on purpose: a containerised or remote harness resolves
+ * loopback inside its own network namespace, not this process's, so it needs an address
+ * that is reachable from where it runs.
+ */
+export function reportServerUrl(): string {
+  return process.env.REPORT_SERVER_URL || `http://${REPORT_SERVER_HOST}:${DEFAULT_MCP_PORT}/`;
+}
 
 const TOOLS = [
   {
@@ -120,7 +137,10 @@ function readBody(req: IncomingMessage): Promise<string> {
 }
 
 /** Start the server. Resolves with a stop function. */
-export async function startReportServer(port = DEFAULT_MCP_PORT): Promise<() => Promise<void>> {
+export async function startReportServer(
+  port = DEFAULT_MCP_PORT,
+  host = REPORT_SERVER_HOST,
+): Promise<() => Promise<void>> {
   const server = createServer((req: IncomingMessage, res: ServerResponse) => {
     void (async () => {
       if (req.method !== 'POST') {
@@ -156,7 +176,7 @@ export async function startReportServer(port = DEFAULT_MCP_PORT): Promise<() => 
     })();
   });
 
-  await new Promise<void>((resolve) => server.listen(port, '127.0.0.1', resolve));
+  await new Promise<void>((resolve) => server.listen(port, host, resolve));
 
   return () =>
     new Promise<void>((resolve, reject) =>

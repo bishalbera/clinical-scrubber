@@ -57,6 +57,8 @@ export interface ScrubAnalyzeResult {
 }
 
 export interface ScrubAnalyzeOptions {
+  /** Must match the session's agent spec, or the store would misrecord it. */
+  readonly reportGate?: boolean;
   readonly onStep?: (message: string) => void;
   readonly onEvent?: (event: IndexedEvent) => void;
 }
@@ -189,7 +191,7 @@ export async function runScrubAndAnalyze(
   runConfig: RunConfig = readRunConfig(),
   client: TrueForge = createClient(runConfig),
 ): Promise<ScrubAnalyzeResult> {
-  const { onStep, onEvent } = options;
+  const { onStep, onEvent, reportGate = false } = options;
   const index = new EventIndex();
   let turnStatus: string | undefined;
 
@@ -225,7 +227,7 @@ export async function runScrubAndAnalyze(
 
   const turnId = index.turnId;
   if (turnId === undefined) throw new Error('No turn id captured for the scrub/analyse turn.');
-  writeStoredSession({ sessionId, lastTurnId: turnId, model: runConfig.model });
+  writeStoredSession({ sessionId, lastTurnId: turnId, model: runConfig.model, reportGate });
 
   const guard = await assertBoundaryHolds(client, sessionId, index, canaries, {
     stage: 'scrub/analyse',

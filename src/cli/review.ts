@@ -11,7 +11,7 @@ import { assertBoundaryHolds } from '../lib/boundary.js';
 import { assertHarnessReachable, createClient, readRunConfig } from '../lib/client.js';
 import { EventIndex, type IndexedEvent } from '../lib/event-index.js';
 import { formatGuardResult } from '../lib/pii-guard.js';
-import { SANDBOX_WORK_DIR } from '../lib/sandbox.js';
+import { downloadSandboxText, SANDBOX_WORK_DIR } from '../lib/sandbox.js';
 import { releasedReports, startReportServer } from '../mcp/report-server.js';
 import {
   formatReviewPacket,
@@ -21,6 +21,38 @@ import {
 } from '../pipeline/approval.js';
 import { runIngest } from '../pipeline/ingest.js';
 import { runScrubAndAnalyze } from '../pipeline/scrub-analyze.js';
+
+/**
+ * The methodology as it stands right now, not as it stood before the first denial.
+ *
+ * Falls back to what the scrub/analyse stage returned if a re-read fails, so a
+ * transient download error shows slightly stale text rather than aborting the review.
+ */
+async function currentMethodology(
+  client: ReturnType<typeof createClient>,
+  sessionId: string,
+  turnId: string,
+  stage: { scrubScript: string; analyzeScript: string; analysis: Record<string, unknown> },
+): Promise<{ scrubScript: string; analyzeScript: string; analysis: Record<string, unknown> }> {
+  try {
+    const [scrubScript, analyzeScript, analysisRaw] = await Promise.all([
+      downloadSandboxText(client, sessionId, turnId, `${SANDBOX_WORK_DIR}/scrub.py`),
+      downloadSandboxText(client, sessionId, turnId, `${SANDBOX_WORK_DIR}/analyze.py`),
+      downloadSandboxText(client, sessionId, turnId, `${SANDBOX_WORK_DIR}/analysis.json`),
+    ]);
+    return {
+      scrubScript,
+      analyzeScript,
+      analysis: JSON.parse(analysisRaw) as Record<string, unknown>,
+    };
+  } catch {
+    return {
+      scrubScript: stage.scrubScript,
+      analyzeScript: stage.analyzeScript,
+      analysis: stage.analysis,
+    };
+  }
+}
 
 function heading(text: string): void {
   console.log(`\n${text}\n${'─'.repeat(text.length)}`);
@@ -74,13 +106,17 @@ async function main(): Promise<void> {
       ingest.verdict,
       ingest.canaries,
       ingest.runId,
-      { onStep: step },
+      { onStep: step, reportGate: true },
       runConfig,
       client,
     );
 
     heading('Requesting release (this will pause for the CMO)');
     const index = new EventIndex();
+    // Accumulates every turn of the approval loop. `sessionVisibleText` falls back to
+    // the index it is given when the session listing fails, so that index has to hold
+    // the revision rounds too — a leak during round three must not be invisible.
+    const wholeRun = new EventIndex();
     const stream = await client.sessions.createTurnStream(ingest.sessionId, {
       input: [
         {
@@ -94,16 +130,24 @@ async function main(): Promise<void> {
     });
     for await (const { data: event, id } of stream.withMetadata()) {
       index.add(event as unknown as IndexedEvent, id);
+      wholeRun.add(event as unknown as IndexedEvent, id);
     }
+
+    const releasedBefore = releasedReports().length;
 
     const outcome = await runApprovalLoop(
       index,
-      (pending) => ({
-        scrubScript: stage.scrubScript,
-        analyzeScript: stage.analyzeScript,
-        analysis: stage.analysis,
-        proposed: pending,
-      }),
+      async (pending) => {
+        // Re-read rather than reuse: a denial makes the agent revise these, and the
+        // reviewer must see the methodology that would actually be released.
+        const current = await currentMethodology(
+          client,
+          ingest.sessionId,
+          wholeRun.turnId ?? ingest.turnId,
+          stage,
+        );
+        return { ...current, proposed: pending };
+      },
       askCmo,
       async (threadId, toolCallId, decision) => {
         const resumed = new EventIndex();
@@ -121,9 +165,12 @@ async function main(): Promise<void> {
         });
         for await (const { data: event, id } of s.withMetadata()) {
           resumed.add(event as unknown as IndexedEvent, id);
+          wholeRun.add(event as unknown as IndexedEvent, id);
         }
         return resumed;
       },
+      // #3: an allow is only a release if the tool actually ran.
+      () => releasedReports().length > releasedBefore,
     );
 
     heading('CMO decision');
@@ -141,7 +188,7 @@ async function main(): Promise<void> {
     if (released.at(-1)) console.log(`  title      ${released.at(-1)?.title}`);
 
     heading('Boundary check across the whole run');
-    const guard = await assertBoundaryHolds(client, ingest.sessionId, index, ingest.canaries, {
+    const guard = await assertBoundaryHolds(client, ingest.sessionId, wholeRun, ingest.canaries, {
       stage: 'report release',
       dataPaths: [`${SANDBOX_WORK_DIR}/trial_raw.csv`, `${SANDBOX_WORK_DIR}/scrubbed.csv`],
       onStep: step,

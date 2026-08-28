@@ -161,3 +161,62 @@ describe('approvalInput', () => {
     });
   });
 });
+
+describe('the loop cannot report a release that did not happen', () => {
+  it('throws when the operator allows but the tool never ran', async () => {
+    await expect(
+      runApprovalLoop(
+        pausedIndex(),
+        () => PACKET,
+        () => ({ allow: true }),
+        async () => new EventIndex(),
+        () => false,
+      ),
+    ).rejects.toThrow(/release did not execute/);
+  });
+
+  it('approves when the release is confirmed', async () => {
+    const outcome = await runApprovalLoop(
+      pausedIndex(),
+      () => PACKET,
+      () => ({ allow: true }),
+      async () => new EventIndex(),
+      () => true,
+    );
+
+    expect(outcome.approved).toBe(true);
+  });
+});
+
+describe('the packet is rebuilt every round', () => {
+  it('shows revised methodology after a denial rather than the original', async () => {
+    let round = 0;
+    const seen: string[] = [];
+
+    await runApprovalLoop(
+      pausedIndex(),
+      // Stands in for re-reading the scripts out of the sandbox each round.
+      () => ({ ...PACKET, scrubScript: `revision ${round}` }),
+      (packet) => {
+        seen.push(packet.scrubScript);
+        return round++ < 1 ? { allow: false, reason: 'revise' } : { allow: true };
+      },
+      async () => pausedIndex(`call-${round}`),
+      () => true,
+    );
+
+    expect(seen).toEqual(['revision 0', 'revision 1']);
+  });
+
+  it('accepts an async packet builder', async () => {
+    const outcome = await runApprovalLoop(
+      pausedIndex(),
+      async () => Promise.resolve(PACKET),
+      () => ({ allow: true }),
+      async () => new EventIndex(),
+      () => true,
+    );
+
+    expect(outcome.approved).toBe(true);
+  });
+});

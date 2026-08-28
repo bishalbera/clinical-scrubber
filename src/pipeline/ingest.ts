@@ -94,8 +94,15 @@ async function resolveSession(
   const { fresh = false, onStep } = options;
   const stored = fresh ? undefined : readStoredSession();
 
+  const wantGate = options.reportGate ?? false;
+
   if (stored !== undefined && stored.model !== runConfig.model) {
     onStep?.(`stored session ran ${stored.model}; starting a new one for ${runConfig.model}`);
+  } else if (stored !== undefined && stored.reportGate !== wantGate) {
+    // The agent spec is fixed when the session is created, so a session made without
+    // the gated tool can never pause for approval. Reusing one here would skip the
+    // CMO checkpoint silently.
+    onStep?.('stored session lacks the approval gate; starting a new one');
   } else if (stored !== undefined) {
     try {
       await client.sessions.get(stored.sessionId);
@@ -114,8 +121,8 @@ async function resolveSession(
       }),
     },
   });
-  writeStoredSession({ sessionId: session.id, model: runConfig.model });
-  onStep?.(`new session ${session.id}`);
+  writeStoredSession({ sessionId: session.id, model: runConfig.model, reportGate: wantGate });
+  onStep?.(`new session ${session.id}${wantGate ? ' (approval gate attached)' : ''}`);
   return { sessionId: session.id, priorTurnId: undefined, reused: false };
 }
 
@@ -206,7 +213,12 @@ export async function runIngest(
   }
 
   // The download endpoint is addressed by turn, so the next run needs this.
-  writeStoredSession({ sessionId, lastTurnId: turnId, model: runConfig.model });
+  writeStoredSession({
+    sessionId,
+    lastTurnId: turnId,
+    model: runConfig.model,
+    reportGate: options.reportGate ?? false,
+  });
 
   // --- verdict ---
 

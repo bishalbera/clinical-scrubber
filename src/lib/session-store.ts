@@ -18,6 +18,8 @@ export interface StoredSession {
   /** The file-download endpoint is addressed by turn. */
   readonly lastTurnId?: string;
   readonly model: string;
+  /** Whether this session's agent carries the approval-gated report tool. */
+  readonly reportGate: boolean;
   readonly updatedAt: string;
 }
 
@@ -31,6 +33,7 @@ export function readStoredSession(): StoredSession | undefined {
       sessionId: parsed.sessionId,
       ...(typeof parsed.lastTurnId === 'string' ? { lastTurnId: parsed.lastTurnId } : {}),
       model: typeof parsed.model === 'string' ? parsed.model : 'unknown',
+      reportGate: parsed.reportGate === true,
       updatedAt: typeof parsed.updatedAt === 'string' ? parsed.updatedAt : 'unknown',
     };
   } catch {

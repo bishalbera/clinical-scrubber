@@ -37,6 +37,23 @@ export type ReviewDecision = { allow: true } | { allow: false; reason: string };
 /** Asks a human to review the packet. */
 export type Reviewer = (packet: ReviewPacket) => Promise<ReviewDecision> | ReviewDecision;
 
+/**
+ * Builds the packet for one round.
+ *
+ * Called per round rather than once, because a denial makes the agent revise its
+ * scripts — showing round one's methodology while approving round three's output
+ * would defeat the point of reviewing a method.
+ */
+export type PacketBuilder = (pending: PendingApproval) => Promise<ReviewPacket> | ReviewPacket;
+
+/**
+ * Confirms the release actually executed after an allow.
+ *
+ * An operator saying yes is not the same as the tool having run: the resumed turn can
+ * fail, or finish without calling the tool at all.
+ */
+export type ReleaseConfirmer = (resumed: EventIndex) => Promise<boolean> | boolean;
+
 export interface ApprovalOutcome {
   readonly approved: boolean;
   readonly rounds: number;
@@ -127,9 +144,10 @@ export function formatReviewPacket(packet: ReviewPacket): string {
  */
 export async function runApprovalLoop(
   initial: EventIndex,
-  packetFor: (pending: PendingApproval) => ReviewPacket,
+  packetFor: PacketBuilder,
   review: Reviewer,
   resume: (threadId: string, toolCallId: string, decision: ReviewDecision) => Promise<EventIndex>,
+  confirmRelease?: ReleaseConfirmer,
 ): Promise<ApprovalOutcome> {
   let index = initial;
   const denials: string[] = [];
@@ -143,12 +161,18 @@ export async function runApprovalLoop(
       return { approved: false, rounds: round - 1, denials, index };
     }
 
-    const decision = await review(packetFor(pending));
+    const decision = await review(await packetFor(pending));
     if (!decision.allow) denials.push(decision.reason);
 
     index = await resume(pending.threadId, pending.toolCallId, decision);
 
     if (decision.allow) {
+      if (confirmRelease !== undefined && !(await confirmRelease(index))) {
+        throw new Error(
+          'The CMO approved, but the release did not execute. Reporting success here ' +
+            'would claim a report exists when none does.',
+        );
+      }
       return { approved: true, rounds: round, denials, index };
     }
   }
