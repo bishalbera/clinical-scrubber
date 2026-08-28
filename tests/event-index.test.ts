@@ -268,3 +268,31 @@ describe('never losing indexed text', () => {
     expect(index.eventsFor('main')).toHaveLength(1);
   });
 });
+
+describe('indexes do not share state through caller-owned events', () => {
+  it('merges a delta once per index when the same objects go to two indexes', () => {
+    // review.ts feeds every event to both a per-turn index and a whole-run one.
+    // mergeEventDelta mutates the base in place, so a shared base would double-merge.
+    const a = new EventIndex();
+    const b = new EventIndex();
+    const base = { type: 'model.message', id: 'm1', threadId: 'main', content: 'Hello' };
+    const delta = { type: 'model.message.delta', id: 'm1', threadId: 'main', content: ' world' };
+
+    a.add(base);
+    b.add(base);
+    a.add(delta);
+    b.add(delta);
+
+    expect(a.allModelVisibleText()).toBe('Hello world');
+    expect(b.allModelVisibleText()).toBe('Hello world');
+  });
+
+  it('does not mutate the event the caller passed in', () => {
+    const index = new EventIndex();
+    const base = { type: 'model.message', id: 'm2', threadId: 'main', content: 'Hello' };
+    index.add(base);
+    index.add({ type: 'model.message.delta', id: 'm2', threadId: 'main', content: ' there' });
+
+    expect(base.content).toBe('Hello');
+  });
+});

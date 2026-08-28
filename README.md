@@ -66,7 +66,7 @@ Built in phases; this is the state of the tree.
 | 1     | Scaffold, synthetic data generator, SDK round-trip    | ✅     |
 | 2     | Sandbox ingest, schema-only classification, PII guard | ✅     |
 | 3     | Compliance + Bio-Stat subagents                       | ✅     |
-| 4     | CMO approval gate on scrub script **and** methodology | ⬜     |
+| 4     | CMO approval gate on scrub script **and** methodology | ✅     |
 | 5     | Report generation, storage push, canary leak proof    | ⬜     |
 | 6     | Resume-after-disconnect, compliance Skill, self-audit | ⬜     |
 
@@ -100,6 +100,13 @@ From Phase 2 onward you also need a sandbox provider: **Settings → Sandbox pro
 Daytona preset, paste a Daytona API key. Daytona is currently TrueForge's only supported
 sandbox backend.
 
+The approval gate needs its MCP server registered once:
+
+```bash
+pnpm mcp:register     # one-time
+pnpm review --fresh   # runs the pipeline and pauses for the CMO
+```
+
 ## Data policy
 
 **No real patient data is used, generated, committed, or accepted by this project.**
@@ -122,7 +129,8 @@ python/          the scripts that run in-sandbox — source of truth for the dat
 src/lib/         TrueForge client, event index, PII guard, canary side channel
 src/pipeline/    orchestration: ingest → scrub → analyze → report
 src/agents/      agent specs (root, compliance, bio-stat)
-src/cli/         entrypoints (ingest, smoke, probes, prove-no-leak)
+src/mcp/         the MCP server hosting the approval-gated release tool
+src/cli/         entrypoints (review, pipeline, ingest, smoke, probes)
 data/synthetic/  generated datasets (gitignored except sample.csv)
 tests/           vitest suites; tests/python/ holds the pytest suites
 ```

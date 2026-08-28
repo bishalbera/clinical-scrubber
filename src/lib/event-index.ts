@@ -178,7 +178,10 @@ export class EventIndex {
     const existing = bucket.events.get(event.id);
     if (existing === undefined) {
       bucket.order.push(event.id);
-      bucket.events.set(event.id, event);
+      // Stored as a copy: mergeEventDelta mutates the base in place, and the caller
+      // may hand the same event object to more than one index. Sharing it would let
+      // one index's merges land in another's, duplicating text.
+      bucket.events.set(event.id, { ...event });
     } else {
       // Never drop text already indexed: it is the guard's only input, and losing it
       // would turn a real leak into a passing run.
