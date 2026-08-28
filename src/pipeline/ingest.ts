@@ -73,6 +73,8 @@ export interface IngestOptions {
   readonly seed?: number;
   /** Force a new session and sandbox. Use for the demo, where the transcript should be clean. */
   readonly fresh?: boolean;
+  /** Attach the approval-gated report tool to the agent. */
+  readonly reportGate?: boolean;
   /** Called with each streamed model token, for CLI progress output. */
   readonly onDelta?: (text: string) => void;
   readonly onStep?: (message: string) => void;
@@ -105,7 +107,12 @@ async function resolveSession(
   }
 
   const { data: session } = await client.sessions.create({
-    agent: { spec: rootAgentSpec(runConfig, { subagents: true }) },
+    agent: {
+      spec: rootAgentSpec(runConfig, {
+        subagents: true,
+        reportGate: options.reportGate ?? false,
+      }),
+    },
   });
   writeStoredSession({ sessionId: session.id, model: runConfig.model });
   onStep?.(`new session ${session.id}`);

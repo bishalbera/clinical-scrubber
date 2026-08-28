@@ -24,6 +24,8 @@
     "probe:upload": "tsx src/cli/probe-upload.ts",
     "ingest": "tsx src/cli/ingest.ts",
     "pipeline": "tsx src/cli/pipeline.ts",
+    "review": "tsx src/cli/review.ts",
+    "mcp:register": "tsx src/cli/register-mcp.ts",
     "dev": "tsx watch src/cli/smoke.ts"
   },
   "dependencies": {

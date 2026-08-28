@@ -9,6 +9,7 @@
 import type { TrueForgeApi } from '@truefoundry/trueforge-sdk';
 
 import type { RunConfig } from '../lib/client.js';
+import { REPORT_MCP_SERVER, REPORT_TOOL_NAME } from '../mcp/report-server.js';
 import { SANDBOX_WORK_DIR } from '../lib/sandbox.js';
 
 export const ROOT_INSTRUCTIONS = `You are the orchestrator for a HIPAA-compliant clinical-trial analysis pipeline.
@@ -35,6 +36,14 @@ WHAT THIS MEANS IN PRACTICE
 Run the commands you are given exactly as written. When reporting results, report what
 the tools printed. Do not invent, extrapolate, or fill in values you did not receive.
 
+RELEASING A REPORT
+The ${'`' + 'generate_final_report' + '`'} tool releases the summary for distribution and pauses for a
+Chief Medical Officer to approve it. Call it only after scrubbing and analysis are
+complete. The summary you pass must be built from aggregate results only.
+
+If the CMO denies, they will say why. Revise what they objected to and present again.
+Do not release on a denial, and do not work around the tool.
+
 DELEGATION
 When asked to scrub or analyse, delegate to a subagent rather than doing it yourself.
 Subagents share this sandbox, so files one writes are visible to the next. Spawn them
@@ -48,6 +57,12 @@ script fails, print shapes, dtypes and counts, never rows.`;
 export interface RootSpecOptions {
   /** Enable subagent spawning. Off until Phase 3. */
   readonly subagents?: boolean;
+  /**
+   * Attach the report-release MCP server and gate its tool on human approval.
+   * `require_approval_for_tools` is a per-server setting, which is why the gated
+   * tool lives on an MCP server rather than on the agent.
+   */
+  readonly reportGate?: boolean;
 }
 
 /** Build the inline agent spec for a pipeline session. */
@@ -58,6 +73,17 @@ export function rootAgentSpec(
   return {
     model: { name: runConfig.model },
     instructions: ROOT_INSTRUCTIONS,
+    ...(options.reportGate
+      ? {
+          mcpServers: [
+            {
+              name: REPORT_MCP_SERVER,
+              preload: true,
+              requireApprovalForTools: [REPORT_TOOL_NAME],
+            },
+          ],
+        }
+      : {}),
     config: {
       sandbox: { enabled: true, fileDownloads: true },
       dynamicSubAgents: { enabled: options.subagents ?? false },
