@@ -19,6 +19,9 @@
 
 import type { TrueForge } from '@truefoundry/trueforge-sdk';
 import { randomUUID } from 'node:crypto';
+import { rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -54,6 +57,7 @@ export async function sessionVisibleText(
   client: TrueForge,
   sessionId: string,
   fallback: EventIndex,
+  strict = false,
 ): Promise<string> {
   try {
     const whole = new EventIndex();
@@ -85,6 +89,15 @@ export async function sessionVisibleText(
     return text.length > 0 ? text : fallback.allModelVisibleText();
   } catch (error) {
     if (error instanceof Error && error.message.includes('refusing to claim')) throw error;
+    if (strict) {
+      // `prove` claims a complete scan of the session. Silently narrowing to one turn
+      // would let it report a clean run it never performed.
+      throw new Error(
+        'Could not retrieve the full session event history, so a complete scan cannot ' +
+          `be claimed: ${error instanceof Error ? error.message : String(error)}`,
+        { cause: error },
+      );
+    }
     return fallback.allModelVisibleText();
   }
 }
@@ -201,4 +214,91 @@ export async function assertBoundaryHolds(
   }
 
   return guard;
+}
+
+export interface DataLeakCheck {
+  readonly leaked: boolean;
+  readonly matches: ReadonlyArray<{ column: string; distinct_values_found: number }>;
+  readonly valuesCompared: number;
+}
+
+/**
+ * Compare arbitrary text against every value in the dataset's identifier columns.
+ *
+ * The shape-based guard cannot see a leaked patient *name*: it matches no pattern.
+ * Only a comparison against the actual values can, and those live in the sandbox — so
+ * the text goes in rather than the data coming out. It travels as a file attachment,
+ * which the harness places without the model ever seeing it, and only counts come back.
+ *
+ * Throws rather than returning a verdict it could not establish.
+ */
+export async function checkTextAgainstData(
+  client: TrueForge,
+  sessionId: string,
+  text: string,
+  identifierColumns: readonly string[],
+  dataPath = `${SANDBOX_WORK_DIR}/trial_raw.csv`,
+): Promise<DataLeakCheck> {
+  if (identifierColumns.length === 0) {
+    return { leaked: false, matches: [], valuesCompared: 0 };
+  }
+
+  const stamp = randomUUID();
+  const textPath = `${SANDBOX_UPLOAD_DIR}/subject-${stamp}.txt`;
+  const localText = join(tmpdir(), `subject-${stamp}.txt`);
+  writeFileSync(localText, text, 'utf8');
+
+  const index = new EventIndex();
+  try {
+    const stream = await client.sessions.createTurnStream(sessionId, {
+      input: [
+        {
+          type: 'user.message',
+          content: [
+            {
+              type: 'text',
+              text:
+                'A text file is attached. Run the command below exactly and paste its ' +
+                'output verbatim. Run it now even if you ran something similar earlier: ' +
+                'the answer must come from this execution. Do not print either file.\n\n' +
+                `python3 ${SANDBOX_UPLOAD_DIR}/scan_transcript.py ${textPath} ${dataPath} ` +
+                `--columns ${identifierColumns.join(',')} --run-id ${stamp}`,
+            },
+            fileAttachment(resolve(PYTHON_DIR, 'scan_transcript.py')),
+            fileAttachment(localText, 'text/plain'),
+          ],
+        },
+      ],
+    });
+    for await (const { data: event, id } of stream.withMetadata()) {
+      index.add(event as unknown as IndexedEvent, id);
+    }
+  } finally {
+    rmSync(localText, { force: true });
+  }
+
+  const payload = execResults(index.allEvents())
+    .flatMap((r) => extractJsonObjects(r.output))
+    .find(
+      (o): o is Record<string, unknown> =>
+        o !== null &&
+        typeof o === 'object' &&
+        (o as Record<string, unknown>).check === 'transcript' &&
+        (o as Record<string, unknown>).run_id === stamp,
+    );
+
+  if (payload === undefined) {
+    throw new Error(
+      `Could not compare text against the dataset (run ${stamp}). Refusing to report a ` +
+        'clean result without that answer. Output withheld.',
+    );
+  }
+
+  return {
+    leaked: payload.leaked === true,
+    matches: Array.isArray(payload.matches)
+      ? (payload.matches as Array<{ column: string; distinct_values_found: number }>)
+      : [],
+    valuesCompared: typeof payload.values_compared === 'number' ? payload.values_compared : 0,
+  };
 }

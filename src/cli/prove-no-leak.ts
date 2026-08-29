@@ -13,7 +13,7 @@
  */
 
 import { canaryRecord } from '../lib/canary.js';
-import { adjudicateCandidates, sessionVisibleText } from '../lib/boundary.js';
+import { adjudicateCandidates, checkTextAgainstData, sessionVisibleText } from '../lib/boundary.js';
 import { assertHarnessReachable, createClient, readRunConfig } from '../lib/client.js';
 import { patternCandidates, scanModelVisibleText } from '../lib/pii-guard.js';
 import { SANDBOX_WORK_DIR } from '../lib/sandbox.js';
@@ -48,7 +48,9 @@ async function main(): Promise<void> {
   );
 
   step('collecting every event from every turn and thread');
-  const scanned = await sessionVisibleText(client, ingest.sessionId, stage.index);
+  // strict: this command claims a complete scan, so it must fail rather than quietly
+  // narrow to a single turn if the session history cannot be retrieved.
+  const scanned = await sessionVisibleText(client, ingest.sessionId, stage.index, true);
   const guard = scanModelVisibleText(scanned, { canaries: canaryRecord(ingest.canaries) });
 
   // An identifier-shaped string is not proof of anything by itself: the agent writes
@@ -64,8 +66,19 @@ async function main(): Promise<void> {
     ]);
   }
 
+  // Shapes are not enough. A patient name and a study id match no pattern, so the
+  // whole transcript is compared against every value in the identifier columns —
+  // inside the sandbox, with only counts coming back.
+  step('comparing the transcript against every identifier value in the dataset');
+  const valueCheck = await checkTextAgainstData(
+    client,
+    ingest.sessionId,
+    scanned,
+    ingest.verdict.pii_columns,
+  );
+
   const canaryHits = guard.hits.filter((h) => h.severity === 'canary').length;
-  const passed = canaryHits === 0 && adjudicated === 0;
+  const passed = canaryHits === 0 && adjudicated === 0 && !valueCheck.leaked;
 
   console.log(`\n${rule()}`);
   console.log('  PII BOUNDARY PROOF');
@@ -86,12 +99,17 @@ async function main(): Promise<void> {
     `  Canary in model context:            ${canaryHits === 0 ? 'NO' : `YES (${canaryHits})`}`,
   );
   console.log(
+    `  Identifier-shaped lookalikes:       ${
+      candidates.length === 0
+        ? 'none'
+        : `${candidates.length} checked against the data, ${adjudicated} were real`
+    }`,
+  );
+  console.log(
     `  Raw patient values in model context: ${
-      adjudicated === 0
-        ? candidates.length === 0
-          ? 'NONE'
-          : `NONE (${candidates.length} lookalikes checked against the data)`
-        : `${adjudicated} FOUND`
+      valueCheck.leaked
+        ? `FOUND in ${valueCheck.matches.map((m) => m.column).join(', ')}`
+        : `NONE (${valueCheck.valuesCompared.toLocaleString()} identifier values compared)`
     }`,
   );
   console.log(rule());

@@ -10,7 +10,7 @@ import { dirname, resolve } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { fileURLToPath } from 'node:url';
 
-import { assertBoundaryHolds } from '../lib/boundary.js';
+import { assertBoundaryHolds, checkTextAgainstData } from '../lib/boundary.js';
 import { canaryRecord } from '../lib/canary.js';
 import { assertHarnessReachable, createClient, readRunConfig } from '../lib/client.js';
 import { EventIndex, type IndexedEvent } from '../lib/event-index.js';
@@ -59,7 +59,6 @@ async function currentMethodology(
 }
 
 const OUT_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '../../out');
-const REPORT_MD = `${SANDBOX_WORK_DIR}/report.md`;
 
 function heading(text: string): void {
   console.log(`\n${text}\n${'─'.repeat(text.length)}`);
@@ -118,6 +117,10 @@ async function main(): Promise<void> {
       client,
     );
 
+    // Run-unique: a fixed path in a reused sandbox lets a previous run's report satisfy
+    // this one if the agent skips the write but still calls the release tool.
+    const reportMd = `${SANDBOX_WORK_DIR}/report-${ingest.runId}.md`;
+
     heading('Requesting release (this will pause for the CMO)');
     const index = new EventIndex();
     // Accumulates every turn of the approval loop. `sessionVisibleText` falls back to
@@ -129,7 +132,7 @@ async function main(): Promise<void> {
         {
           type: 'user.message',
           content:
-            `Write an FDA-style research summary to ${REPORT_MD} using the aggregate ` +
+            `Write an FDA-style research summary to ${reportMd} using the aggregate ` +
             'results only. Structure it as: Study design; Participants and disposition; ' +
             'Methods (de-identification and statistical); Results (with p-values and ' +
             'confidence intervals); Safety; Limitations. Every number must come from the ' +
@@ -204,7 +207,7 @@ async function main(): Promise<void> {
         client,
         ingest.sessionId,
         wholeRun.turnId ?? ingest.turnId,
-        REPORT_MD,
+        reportMd,
       );
 
       // Fetched over the download channel, which the guard never sees. Anything printed
@@ -212,10 +215,26 @@ async function main(): Promise<void> {
       const reportGuard = scanModelVisibleText(raw, { canaries: canaryRecord(ingest.canaries) });
       if (!reportGuard.clean) {
         throw new Error(
-          `${REPORT_MD} contains patient-shaped values and will not be written.\n\n` +
+          `${reportMd} contains patient-shaped values and will not be written.\n\n` +
             formatGuardResult(reportGuard),
         );
       }
+
+      // Shapes alone would miss a patient name, which matches no pattern. Compare the
+      // draft against the real identifier values inside the sandbox before writing it.
+      const valueCheck = await checkTextAgainstData(
+        client,
+        ingest.sessionId,
+        raw,
+        ingest.verdict.pii_columns,
+      );
+      if (valueCheck.leaked) {
+        throw new Error(
+          `${reportMd} contains real identifier values from ` +
+            `${valueCheck.matches.map((m) => m.column).join(', ')} and will not be written.`,
+        );
+      }
+      console.log(`  ${valueCheck.valuesCompared} identifier values compared, none present`);
 
       mkdirSync(OUT_DIR, { recursive: true });
       const outPath = resolve(OUT_DIR, 'report.md');
