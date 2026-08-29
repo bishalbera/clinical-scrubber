@@ -246,6 +246,7 @@ async function main(): Promise<void> {
     const guard = await assertBoundaryHolds(client, ingest.sessionId, wholeRun, ingest.canaries, {
       stage: 'report release',
       dataPaths: [`${SANDBOX_WORK_DIR}/trial_raw.csv`, `${SANDBOX_WORK_DIR}/scrubbed.csv`],
+      identifierColumns: ingest.verdict.pii_columns,
       onStep: step,
     });
     console.log(formatGuardResult(guard));

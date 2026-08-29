@@ -169,6 +169,13 @@ export interface BoundaryCheckOptions {
   /** Named in the failure message, so a breach says which stage produced it. */
   readonly stage: string;
   readonly dataPaths?: readonly string[] | undefined;
+  /**
+   * Classified identifier columns. When given, the whole transcript is compared
+   * against every value in them, not just against identifier *shapes* — a patient
+   * name and a study id match no pattern. Pass these wherever the run makes a claim
+   * about the boundary holding; omit them for a cheap per-stage check.
+   */
+  readonly identifierColumns?: readonly string[] | undefined;
   readonly onStep?: ((message: string) => void) | undefined;
 }
 
@@ -185,7 +192,12 @@ export async function assertBoundaryHolds(
   canaries: CanarySet,
   options: BoundaryCheckOptions,
 ): Promise<GuardResult> {
-  const { stage, dataPaths = [`${SANDBOX_WORK_DIR}/trial_raw.csv`], onStep } = options;
+  const {
+    stage,
+    dataPaths = [`${SANDBOX_WORK_DIR}/trial_raw.csv`],
+    identifierColumns = [],
+    onStep,
+  } = options;
 
   const scanned = await sessionVisibleText(client, sessionId, index);
   const guard = scanModelVisibleText(scanned, { canaries: canaryRecord(canaries) });
@@ -210,6 +222,26 @@ export async function assertBoundaryHolds(
       );
     }
     onStep?.('none of them appear in the data');
+  }
+
+  if (identifierColumns.length > 0) {
+    onStep?.('comparing the transcript against every identifier value in the dataset');
+    const values = await checkTextAgainstData(
+      client,
+      sessionId,
+      scanned,
+      identifierColumns,
+      dataPaths[0],
+    );
+    if (values.leaked) {
+      throw new Error(
+        `PII BOUNDARY BREACHED during ${stage}.\n\n` +
+          'Values from ' +
+          `${values.matches.map((m) => m.column).join(', ')} appear in model-visible ` +
+          'context. These are real patient values, not identifier-shaped lookalikes.',
+      );
+    }
+    onStep?.(`${values.valuesCompared} identifier values compared, none present`);
   }
 
   return guard;
