@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url';
 
 import { assertHarnessReachable, createClient, readRunConfig } from '../lib/client.js';
 import { EventIndex, type IndexedEvent } from '../lib/event-index.js';
+import { downloadSandboxText, execResults, SANDBOX_UPLOAD_DIR } from '../lib/sandbox.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CLASSIFY = resolve(HERE, '../../python/classify.py');
@@ -84,21 +85,71 @@ async function main(): Promise<void> {
     }
   }
 
-  console.log(`\n--- final message ---\n${index.getMainText().slice(0, 1200)}`);
-  console.log(`\nlocal sha256 was ${localSha}`);
+  const output = execResults(index.allEvents())
+    .map((r) => r.output)
+    .join('\n');
+
+  const failures: string[] = [];
+
+  // 1. The harness places the file where we think it does.
+  const placed = new RegExp(`${SANDBOX_UPLOAD_DIR}/classify\\.py`).test(output);
+  if (!placed) failures.push(`not placed under ${SANDBOX_UPLOAD_DIR}`);
+
+  // 2. It arrives byte-identical. Compared, not merely printed.
+  const remoteSha = new RegExp(`([0-9a-f]{64})\\s+${SANDBOX_UPLOAD_DIR}/classify\\.py`).exec(
+    output,
+  )?.[1];
+  if (remoteSha === undefined) failures.push('no sha256 reported for the placed file');
+  else if (remoteSha !== localSha) failures.push(`sha256 differs (${remoteSha.slice(0, 12)}…)`);
+
+  // 3. The download endpoint serves a path nobody declared as an artifact. The canary
+  //    side channel depends on this, so it is checked rather than assumed.
+  const turnId = index.turnId;
+  if (turnId === undefined) {
+    failures.push('no turn id, cannot test the download channel');
+  } else {
+    try {
+      const fetched = await downloadSandboxText(
+        client,
+        session.id,
+        turnId,
+        `${SANDBOX_UPLOAD_DIR}/classify.py`,
+      );
+      if (fetched !== source.toString('utf8')) {
+        failures.push('downloaded bytes differ from the local file');
+      }
+    } catch (error) {
+      failures.push(
+        `undeclared-path download failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
 
   // An attachment that were decoded into the conversation would be no better than pasting.
+  // 4. The contents must not reach the model. This is what makes attachments a
+  //    boundary mechanism rather than a slower way of pasting.
   const visible = index.allModelVisibleText();
   const markers = ['MIN_LEAK_CHECK_LENGTH', 'assert_no_values_leaked', 'MATCH_THRESHOLD'];
   const inlined = markers.filter((marker) => visible.includes(marker));
+  if (inlined.length > 0) failures.push(`attachment inlined into context (${inlined.join(', ')})`);
 
-  console.log(`\n--- did the file content enter model context? ---`);
-  console.log(`model-visible text: ${visible.length} chars`);
+  console.log(`\nlocal sha256          ${localSha.slice(0, 16)}…`);
+  console.log(`placed under upload   ${placed ? 'yes' : 'NO'}`);
+  console.log(`sha256 matches        ${remoteSha === localSha ? 'yes' : 'NO'}`);
   console.log(
-    inlined.length === 0
-      ? 'NO — no marker from classify.py appears. The harness placed the file without inlining it.'
-      : `YES — found ${inlined.join(', ')}. Attachments are decoded into context.`,
+    `undeclared download   ${failures.some((f) => f.includes('download')) ? 'NO' : 'yes'}`,
   );
+  console.log(`kept out of context   ${inlined.length === 0 ? 'yes' : 'NO'}`);
+  console.log(`model-visible text    ${visible.length} chars`);
+
+  if (failures.length > 0) {
+    console.error(`\nFAIL — the documented behaviour no longer holds:`);
+    for (const failure of failures) console.error(`  · ${failure}`);
+    process.exitCode = 1;
+    return;
+  }
+  console.log('\nPASS — attachments arrive byte-identical, stay out of model context,');
+  console.log('and the download endpoint serves undeclared paths.');
 }
 
 main().catch((error: unknown) => {
