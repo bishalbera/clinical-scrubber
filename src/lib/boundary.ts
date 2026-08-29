@@ -18,6 +18,7 @@
  */
 
 import type { TrueForge } from '@truefoundry/trueforge-sdk';
+import { randomUUID } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -95,7 +96,10 @@ export async function adjudicateCandidates(
   candidates: readonly string[],
   dataPaths: readonly string[],
 ): Promise<number> {
-  const listPath = `${SANDBOX_WORK_DIR}/.candidates.json`;
+  // A fresh path per call. With a fixed name the agent sees a request it has already
+  // satisfied earlier in the session and answers from memory instead of re-running the
+  // command, which leaves the check unable to decide.
+  const listPath = `${SANDBOX_WORK_DIR}/.candidates-${randomUUID()}.json`;
   const index = new EventIndex();
 
   const stream = await client.sessions.createTurnStream(sessionId, {
@@ -107,7 +111,9 @@ export async function adjudicateCandidates(
             type: 'text',
             text:
               `Write this JSON to ${listPath}, then run the command below and paste its ` +
-              `output verbatim. Do not print the data files.\n\n` +
+              'output verbatim. Run it now even if you ran a similar command earlier in ' +
+              'this conversation: the answer must come from this execution, not from ' +
+              `memory. Do not print the data files.\n\n` +
               `${JSON.stringify(candidates)}\n\n` +
               `python3 ${SANDBOX_UPLOAD_DIR}/adjudicate.py ${listPath} ${dataPaths.join(' ')}`,
           },
@@ -131,9 +137,13 @@ export async function adjudicateCandidates(
 
   if (payload === undefined) {
     // Unable to decide. A boundary check that fails open is not a boundary check.
+    const failure = execResults(index.allEvents()).at(-1);
     throw new Error(
       'Could not adjudicate identifier-shaped strings against the dataset. ' +
-        'Refusing to report a clean run without that answer.',
+        'Refusing to report a clean run without that answer.' +
+        (failure
+          ? `\n\nLast sandbox output (exit ${failure.exitCode ?? '?'}):\n${failure.output.slice(0, 500)}`
+          : '\n\nThe agent produced no sandbox output at all.'),
     );
   }
 

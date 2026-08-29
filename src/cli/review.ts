@@ -5,12 +5,16 @@
  * Approve and it proceeds; deny with a reason and the agent revises and comes back.
  */
 
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 import { createInterface } from 'node:readline/promises';
+import { fileURLToPath } from 'node:url';
 
 import { assertBoundaryHolds } from '../lib/boundary.js';
+import { canaryRecord } from '../lib/canary.js';
 import { assertHarnessReachable, createClient, readRunConfig } from '../lib/client.js';
 import { EventIndex, type IndexedEvent } from '../lib/event-index.js';
-import { formatGuardResult } from '../lib/pii-guard.js';
+import { formatGuardResult, scanModelVisibleText } from '../lib/pii-guard.js';
 import { downloadSandboxText, SANDBOX_WORK_DIR } from '../lib/sandbox.js';
 import { releasedReports, startReportServer } from '../mcp/report-server.js';
 import {
@@ -53,6 +57,9 @@ async function currentMethodology(
     };
   }
 }
+
+const OUT_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '../../out');
+const REPORT_MD = `${SANDBOX_WORK_DIR}/report.md`;
 
 function heading(text: string): void {
   console.log(`\n${text}\n${'─'.repeat(text.length)}`);
@@ -122,9 +129,13 @@ async function main(): Promise<void> {
         {
           type: 'user.message',
           content:
-            'Draft the final research summary from the aggregate results only, then call ' +
-            `${'`generate_final_report`'} to release it. Do not include any participant-level ` +
-            'value. Keep the summary under 1500 characters.',
+            `Write an FDA-style research summary to ${REPORT_MD} using the aggregate ` +
+            'results only. Structure it as: Study design; Participants and disposition; ' +
+            'Methods (de-identification and statistical); Results (with p-values and ' +
+            'confidence intervals); Safety; Limitations. Every number must come from the ' +
+            'analysis output — invent nothing, and include no participant-level value.\n\n' +
+            `Then call ${'`generate_final_report`'} with a title and a summary under 1500 ` +
+            'characters drawn from that document.',
         },
       ],
     });
@@ -186,6 +197,31 @@ async function main(): Promise<void> {
       throw new Error('A report was released without approval. That must never happen.');
     }
     if (released.at(-1)) console.log(`  title      ${released.at(-1)?.title}`);
+
+    if (outcome.approved) {
+      heading('Report artifact');
+      const raw = await downloadSandboxText(
+        client,
+        ingest.sessionId,
+        wholeRun.turnId ?? ingest.turnId,
+        REPORT_MD,
+      );
+
+      // Fetched over the download channel, which the guard never sees. Anything printed
+      // or written to disk from there has to be checked here instead.
+      const reportGuard = scanModelVisibleText(raw, { canaries: canaryRecord(ingest.canaries) });
+      if (!reportGuard.clean) {
+        throw new Error(
+          `${REPORT_MD} contains patient-shaped values and will not be written.\n\n` +
+            formatGuardResult(reportGuard),
+        );
+      }
+
+      mkdirSync(OUT_DIR, { recursive: true });
+      const outPath = resolve(OUT_DIR, 'report.md');
+      writeFileSync(outPath, raw, 'utf8');
+      console.log(`  ${raw.split('\n').length} lines written to ${outPath}`);
+    }
 
     heading('Boundary check across the whole run');
     const guard = await assertBoundaryHolds(client, ingest.sessionId, wholeRun, ingest.canaries, {

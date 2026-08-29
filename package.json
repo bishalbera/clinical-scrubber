@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Clinical Trial Data Scrubber & Analyst \u2014 a TrueForge agent that de-identifies and analyses trial data without raw patient values ever entering model context.",
+  "description": "Clinical Trial Data Scrubber & Analyst — a TrueForge agent that de-identifies and analyses trial data without raw patient values ever entering model context.",
   "engines": {
     "node": ">=22.14"
   },
@@ -25,6 +25,7 @@
     "ingest": "tsx src/cli/ingest.ts",
     "pipeline": "tsx src/cli/pipeline.ts",
     "review": "tsx src/cli/review.ts",
+    "prove": "tsx src/cli/prove-no-leak.ts",
     "mcp:register": "tsx src/cli/register-mcp.ts",
     "dev": "tsx watch src/cli/smoke.ts"
   },
