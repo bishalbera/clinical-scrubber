@@ -19,6 +19,7 @@ import { createClient, readRunConfig, type RunConfig } from '../lib/client.js';
 import { EventIndex, type IndexedEvent } from '../lib/event-index.js';
 import type { GuardResult } from '../lib/pii-guard.js';
 import {
+  describeExecFailure,
   downloadSandboxText,
   execResults,
   extractJsonObjects,
@@ -225,7 +226,7 @@ export async function runIngest(
   const results = execResults(index.allEvents());
   const failed = results.find((result) => !result.success || (result.exitCode ?? 0) !== 0);
   if (failed !== undefined) {
-    throw new Error(`Sandbox command failed (exit ${failed.exitCode ?? '?'}):\n${failed.output}`);
+    throw new Error(`Sandbox command failed: ${describeExecFailure(failed)}.`);
   }
 
   const verdict = results.flatMap((result) => extractJsonObjects(result.output)).find(isVerdict);

@@ -22,7 +22,7 @@ ignore = ["S101"]
 [tool.ruff.lint.isort]
 # The sandbox runs these as loose scripts, so they are imported by bare module
 # name and ruff cannot infer that they are ours.
-known-first-party = ["gen_data", "classify", "verify_scrub", "adjudicate"]
+known-first-party = ["gen_data", "classify", "verify_scrub", "adjudicate", "scan_transcript"]
 
 [tool.ruff.lint.per-file-ignores]
 # The generator's use of `random` is for reproducible fake data, not for anything

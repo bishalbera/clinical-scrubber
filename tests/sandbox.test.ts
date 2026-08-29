@@ -8,6 +8,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 import {
+  describeExecFailure,
   execResults,
   extractJsonObjects,
   fileAttachment,
@@ -129,5 +130,38 @@ describe('sandbox paths', () => {
   it('separates the upload directory from the working directory', () => {
     // The harness owns the upload dir; the pipeline writes its output elsewhere.
     expect(SANDBOX_UPLOAD_DIR).not.toBe(SANDBOX_WORK_DIR);
+  });
+});
+
+describe('describeExecFailure', () => {
+  it('never quotes what the command printed', () => {
+    // The command most likely to fail is one that printed something it should not have,
+    // and error text reaches a terminal and shell history.
+    const result = {
+      success: false,
+      exitCode: 1,
+      output: 'STUDY-0042,Marcus Okonkwo,900-11-2222,MRN497357',
+    };
+    const described = describeExecFailure(result);
+
+    for (const value of ['Marcus Okonkwo', '900-11-2222', 'MRN497357', 'STUDY-0042']) {
+      expect(described).not.toContain(value);
+    }
+  });
+
+  it('still says enough to diagnose', () => {
+    const described = describeExecFailure({ success: false, exitCode: 2, output: 'x'.repeat(500) });
+    expect(described).toContain('exit 2');
+    expect(described).toContain('500');
+  });
+
+  it('handles a missing exit code', () => {
+    expect(describeExecFailure({ success: false, exitCode: undefined, output: '' })).toContain(
+      'unknown',
+    );
+  });
+
+  it('handles no command at all', () => {
+    expect(describeExecFailure(undefined)).toContain('no sandbox command');
   });
 });

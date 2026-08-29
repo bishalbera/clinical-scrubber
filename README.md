@@ -28,6 +28,30 @@ model has no part in. So the model has no way to know the string at all, and if 
 appears in a transcript, the only available explanation is that something read the raw
 data.
 
+## The proof
+
+```bash
+pnpm prove
+```
+
+```
+  Canary SSN            967-46-8957
+  Canary name           Perpetua Ashdown-Vance
+  Planted in            row 126 (STUDY-0127)
+  Minted                inside the sandbox, never printed, never told to the model
+
+  Rows of patient data  300      Identifier columns    8
+  Subagent threads      2        Model-visible text    32,605 characters scanned
+
+  Canary in model context:             NO
+  Raw patient values in model context: NONE (1 lookalike checked against the data)
+
+  PASS — the boundary held.
+```
+
+Exits non-zero on any leak. The canary differs on every run, because it is generated
+inside the sandbox rather than fixed in source.
+
 ## How the boundary is enforced
 
 The design consequence of the claim is that the agent cannot look at the data in order
@@ -67,7 +91,7 @@ Built in phases; this is the state of the tree.
 | 2     | Sandbox ingest, schema-only classification, PII guard | ✅     |
 | 3     | Compliance + Bio-Stat subagents                       | ✅     |
 | 4     | CMO approval gate on scrub script **and** methodology | ✅     |
-| 5     | Report generation, storage push, canary leak proof    | ⬜     |
+| 5     | Report generation and the canary leak proof           | ✅     |
 | 6     | Resume-after-disconnect, compliance Skill, self-audit | ⬜     |
 
 ## Quick start
@@ -106,6 +130,54 @@ The approval gate needs its MCP server registered once:
 pnpm mcp:register     # one-time
 pnpm review --fresh   # runs the pipeline and pauses for the CMO
 ```
+
+## Qodo review
+
+Every substantive change went through a pull request reviewed by Qodo before merge.
+
+- **Representative PR:** [#2 — sandbox ingest with schema-only PII classification and
+  leak guard](https://github.com/bishalbera/clinical-scrubber/pull/2)
+- **Full history:** [#1](https://github.com/bishalbera/clinical-scrubber/pull/1) ·
+  [#2](https://github.com/bishalbera/clinical-scrubber/pull/2) ·
+  [#3](https://github.com/bishalbera/clinical-scrubber/pull/3) ·
+  [#4](https://github.com/bishalbera/clinical-scrubber/pull/4)
+
+Across those four PRs Qodo raised **21 findings — 14 High, 7 Medium**. All were
+resolved except one, which was partly accepted with the reasoning recorded in its
+thread. Each PR followed the same loop: review, fixes pushed to the same branch,
+follow-up review against the final code, then a human merge.
+
+### What it surfaced
+
+The findings that mattered were all in code that had a green test suite, a clean
+typecheck and clean lint — every one sat in a path the tests never exercised.
+
+- **The boundary check only covered 1/300th of the file.** The run failed on the
+  planted canary but treated any other patient row as a non-fatal "pattern" hit, so
+  `head -5 trial_raw.csv` would have leaked five real participants and exited zero.
+  Fixed by adjudicating suspicious strings inside the sandbox against the real data —
+  a match in the data is a leak, a match absent from it is agent-authored example text.
+- **The guard was itself a disclosure channel.** Excerpts masked the matched value but
+  printed 24 raw characters either side, which on a leaked CSV row are that same
+  patient's name, MRN and date of birth. A test named "the guard does not become the
+  leak" had passed throughout, because it only ever checked the match.
+- **Stale artifacts could satisfy a fresh run.** With a warm sandbox nothing bound
+  `/work` outputs to the current run, so an agent that skipped generation could return
+  a previous run's verdict and canary. Every artifact now carries a per-run id.
+- **A per-participant study number was being kept.** `STUDY-0001` matched no detector
+  and was treated as an analysis column, although it re-links every row to one person.
+- **Session scanning read one page.** `listEvents` is paginated and newest-first, so
+  older turns of a reused session escaped the scan entirely.
+
+### Intentionally dismissed
+
+One finding on [#2](https://github.com/bishalbera/clinical-scrubber/pull/2) asked the
+5-second harness preflight to inherit `DEFAULT_TIMEOUT_SECONDS` (600s). Declined, with
+the reason recorded in the thread: the two answer different questions — 600s is the
+budget for a turn that cold-starts a sandbox and runs pandas, while the preflight only
+answers "is the harness up?", and inheriting it would mean waiting ten minutes to learn
+the server is not running. The real defect was an unexplained literal, so it became
+`REACHABILITY_TIMEOUT_MS`, documented and overridable.
 
 ## Data policy
 
