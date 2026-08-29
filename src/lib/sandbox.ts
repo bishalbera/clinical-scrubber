@@ -71,6 +71,22 @@ export function execResults(events: readonly IndexedEvent[]): ExecResult[] {
   return results;
 }
 
+/**
+ * Describe a failed sandbox command without quoting what it printed.
+ *
+ * Error messages reach a terminal and shell history, so quoting sandbox output makes
+ * the failure path a disclosure channel — and the command most likely to fail is one
+ * that printed something it should not have. Metadata only: enough to diagnose, never
+ * enough to leak.
+ */
+export function describeExecFailure(result: ExecResult | undefined): string {
+  if (result === undefined) return 'no sandbox command produced output';
+  return (
+    `exit ${result.exitCode ?? 'unknown'}, ` +
+    `${result.output.length} chars of output withheld (unscanned)`
+  );
+}
+
 /** Every balanced top-level JSON object in `text`, parsed. */
 export function extractJsonObjects(text: string): unknown[] {
   const found: unknown[] = [];

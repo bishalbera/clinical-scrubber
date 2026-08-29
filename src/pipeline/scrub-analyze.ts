@@ -18,6 +18,7 @@ import { createClient, readRunConfig, type RunConfig } from '../lib/client.js';
 import { EventIndex, MAIN_THREAD, type IndexedEvent } from '../lib/event-index.js';
 import { formatGuardResult, scanModelVisibleText, type GuardResult } from '../lib/pii-guard.js';
 import {
+  describeExecFailure,
   downloadSandboxText,
   execResults,
   extractJsonObjects,
@@ -254,7 +255,7 @@ export async function runScrubAndAnalyze(
     throw new Error(
       `No verifier result for run ${runId}. Refusing to treat the scrub as done on the ` +
         "strength of the agent's own summary." +
-        (tail ? `\n\nLast sandbox failure (exit ${tail.exitCode ?? '?'}):\n${tail.output}` : ''),
+        `\nLast sandbox command: ${describeExecFailure(tail)}.`,
     );
   }
   const verification = toVerification(verificationPayload);

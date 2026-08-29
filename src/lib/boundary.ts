@@ -34,6 +34,7 @@ import {
   type GuardResult,
 } from './pii-guard.js';
 import {
+  describeExecFailure,
   execResults,
   extractJsonObjects,
   fileAttachment,
@@ -150,13 +151,11 @@ export async function adjudicateCandidates(
 
   if (payload === undefined) {
     // Unable to decide. A boundary check that fails open is not a boundary check.
-    const failure = execResults(index.allEvents()).at(-1);
+    const results = execResults(index.allEvents());
     throw new Error(
       'Could not adjudicate identifier-shaped strings against the dataset. ' +
-        'Refusing to report a clean run without that answer.' +
-        (failure
-          ? `\n\nLast sandbox output (exit ${failure.exitCode ?? '?'}):\n${failure.output.slice(0, 500)}`
-          : '\n\nThe agent produced no sandbox output at all.'),
+        'Refusing to report a clean run without that answer.\n' +
+        `Sandbox commands seen: ${results.length}; last ${describeExecFailure(results.at(-1))}.`,
     );
   }
 
