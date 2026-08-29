@@ -4,7 +4,33 @@ An agent that de-identifies clinical-trial data and runs the statistics for an
 FDA-style efficacy summary — built on [TrueForge](https://trueforge.dev), TrueFoundry's
 open-source agent harness.
 
-The interesting part is not the report. It is the boundary.
+Researchers spend hundreds of hours de-identifying patient data and running statistics
+before they can draft an FDA report. It is exactly the work an agent should do, and
+exactly the work you cannot hand to one: the raw file contains names, SSNs, MRNs and
+dates of birth, and putting those in an LLM's context is a HIPAA violation.
+
+The usual answer is to redact first and hope. This takes the harder position: the agent
+plans the de-identification **without ever seeing a value**, and every run proves it.
+
+## What it does
+
+1. **Ingests** a messy trial CSV — 300 participants, four date formats, units glued onto
+   numbers, mixed casing, dropout gaps.
+2. **Classifies** every column by identifier type, from inside the sandbox.
+3. **Delegates** to two subagents: Compliance writes the de-identification script,
+   Bio-Stat writes the statistical analysis. Both author their own Python.
+4. **Stops for a Chief Medical Officer**, who reads both scripts in full before any
+   report is released.
+5. **Proves** that no patient value reached the model.
+
+The statistics are real. A representative run:
+
+```
+treatment n=144  mean -5.73  SD 6.52
+placebo   n=147  mean -2.98  SD 5.61
+difference -2.75, 95% CI [-4.15, -1.34], t=-3.85, p=0.000146, Cohen's d=-0.45
+safety: chi2=0.30, p=0.585  (correctly null)
+```
 
 ## The claim
 
@@ -81,18 +107,31 @@ is remove the _reason_ to do it — the classifier already returns everything ne
 plan a scrub — and then detect it with certainty if it happens anyway. The claim is
 "we check every run", not "it cannot occur".
 
-## Status
+## How it uses TrueForge
 
-Built in phases; this is the state of the tree.
+| Feature                 | Use                                                                                                                                                                       |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Sandbox** (Daytona)   | Every byte of patient data lives here. The agent writes and runs pandas and scipy against it; nothing else ever holds a record.                                           |
+| **Subagents**           | Compliance and Bio-Stat run as separate threads with their own context. Sequential rather than parallel, because the analysis needs the scrubbed file the scrub produces. |
+| **MCP + tool approval** | `require_approval_for_tools` is per-server, so the gated release tool is hosted on a real MCP server the harness enumerates and calls.                                    |
+| **Approval pause**      | `tool.approval_required` stops the run; the CLI renders the review packet and resumes with `user.tool_approval`. Denials carry a reason and the agent revises.            |
+| **File attachments**    | The pipeline's Python arrives as `file` content parts. The harness places them in the sandbox without the model reproducing a byte.                                       |
+| **Turn file download**  | Brings the canary, the agent-authored scripts and the report back out, bypassing the model entirely.                                                                      |
+| **Event streaming**     | Deltas are merged per thread to reconstruct everything the model could have seen — the guard's only input.                                                                |
 
-| Phase | What it adds                                          | Status |
-| ----- | ----------------------------------------------------- | ------ |
-| 1     | Scaffold, synthetic data generator, SDK round-trip    | ✅     |
-| 2     | Sandbox ingest, schema-only classification, PII guard | ✅     |
-| 3     | Compliance + Bio-Stat subagents                       | ✅     |
-| 4     | CMO approval gate on scrub script **and** methodology | ✅     |
-| 5     | Report generation and the canary leak proof           | ✅     |
-| 6     | Resume-after-disconnect, compliance Skill, self-audit | ⬜     |
+Two things the docs left open, settled by probing rather than assumption: attachments
+land in `/opt/tf/uploads/` byte-identical and **do not** enter model context, and the
+download endpoint serves any sandbox path, not only declared artifacts. Both are
+load-bearing, and `pnpm probe:upload` re-checks them.
+
+## The human checkpoint
+
+The CMO approves a **method**, not a button. The packet contains `scrub.py` and
+`analyze.py` in full — pulled from the sandbox, so it is the exact text that ran — plus
+the aggregate results and the arguments proposed for release. A denial sends the reason
+back; the agent revises and presents again. Nothing is released without an explicit
+allow, and the CLI cross-checks the MCP server's release log against the loop's verdict
+rather than trusting the gate to report on itself.
 
 ## Quick start
 
@@ -120,7 +159,7 @@ in the harness, never in this repo and never in the sandbox. Set `TRUEFORGE_MODE
 pnpm smoke             # creates a session, streams one turn, prints the reply
 ```
 
-From Phase 2 onward you also need a sandbox provider: **Settings → Sandbox providers**,
+You also need a sandbox provider: **Settings → Sandbox providers**,
 Daytona preset, paste a Daytona API key. Daytona is currently TrueForge's only supported
 sandbox backend.
 
@@ -140,9 +179,10 @@ Every substantive change went through a pull request reviewed by Qodo before mer
 - **Full history:** [#1](https://github.com/bishalbera/clinical-scrubber/pull/1) ·
   [#2](https://github.com/bishalbera/clinical-scrubber/pull/2) ·
   [#3](https://github.com/bishalbera/clinical-scrubber/pull/3) ·
-  [#4](https://github.com/bishalbera/clinical-scrubber/pull/4)
+  [#4](https://github.com/bishalbera/clinical-scrubber/pull/4) ·
+  [#5](https://github.com/bishalbera/clinical-scrubber/pull/5)
 
-Across those four PRs Qodo raised **21 findings — 14 High, 7 Medium**. All were
+Across those five PRs Qodo raised **26 findings — 19 High, 7 Medium**. All were
 resolved except one, which was partly accepted with the reasoning recorded in its
 thread. Each PR followed the same loop: review, fixes pushed to the same branch,
 follow-up review against the final code, then a human merge.
@@ -168,6 +208,14 @@ typecheck and clean lint — every one sat in a path the tests never exercised.
   and was treated as an analysis column, although it re-links every row to one person.
 - **Session scanning read one page.** `listEvents` is paginated and newest-first, so
   older turns of a reused session escaped the scan entirely.
+- **The guard only matched identifier _shapes_.** Six regexes catch SSNs and emails but
+  not a patient name or a study id, which look like ordinary words. A leaked name would
+  have printed `NONE` and exited zero. Now the whole transcript is compared against every
+  value in the classified identifier columns — inside the sandbox, with only counts
+  coming back. The last run compared 2,183 values.
+- **Error messages were a disclosure channel.** Three separate failure paths quoted raw
+  sandbox output into text that reaches a terminal and shell history — and the command
+  most likely to fail is one that printed something it should not have.
 
 ### Intentionally dismissed
 
