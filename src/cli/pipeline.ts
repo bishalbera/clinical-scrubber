@@ -1,8 +1,4 @@
-/**
- * `pnpm pipeline` — ingest, classify, scrub, analyse, and check the boundary across
- * every turn of the run.
- */
-
+/** `pnpm pipeline` — the full run without the approval gate. */
 import { assertBoundaryHolds } from '../lib/boundary.js';
 import { assertHarnessReachable, createClient, readRunConfig } from '../lib/client.js';
 import { formatGuardResult } from '../lib/pii-guard.js';

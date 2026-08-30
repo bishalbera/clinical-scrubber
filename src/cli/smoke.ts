@@ -1,8 +1,4 @@
-/**
- * `pnpm smoke` — verify the SDK round-trip. No sandbox, no MCP, no subagents: if this
- * fails the problem is the harness or the model provider, not this project.
- */
-
+/** `pnpm smoke` — verify the SDK round-trip. */
 import {
   assertHarnessReachable,
   createClient,

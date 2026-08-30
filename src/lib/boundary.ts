@@ -1,22 +1,4 @@
-/**
- * The boundary check, in one place.
- *
- * It lives here rather than in each pipeline stage because the first version did not:
- * `scrub-analyze.ts` was written against an earlier copy that tested only
- * `canaryClean`, which let a leak of any row except the single planted one pass. One
- * implementation, one place to harden.
- *
- * Three steps, in order of certainty:
- *
- *  1. Scan the whole session, not just the latest turn — a reused session keeps
- *     earlier turns in the model's context.
- *  2. A canary hit is proof: the value was minted inside the sandbox and never told
- *     to the model, so its presence has one explanation.
- *  3. An identifier-shaped hit is only suspicious, because agent-authored code can
- *     contain examples. That is settled inside the sandbox against the real data, and
- *     only counts come back.
- */
-
+/** The boundary check: session-wide scan, canary proof, in-sandbox value comparison. */
 import type { TrueForge } from '@truefoundry/trueforge-sdk';
 import { randomUUID } from 'node:crypto';
 import { rmSync, writeFileSync } from 'node:fs';
@@ -110,10 +92,9 @@ export async function adjudicateCandidates(
   candidates: readonly string[],
   dataPaths: readonly string[],
 ): Promise<number> {
-  // A fresh path per call. With a fixed name the agent sees a request it has already
-  // satisfied earlier in the session and answers from memory instead of re-running the
-  // command, which leaves the check unable to decide.
-  const listPath = `${SANDBOX_WORK_DIR}/.candidates-${randomUUID()}.json`;
+  // Fresh path per call, and deliberately not a dotfile: the agent is instructed never
+  // to read those, and would refuse to write this one.
+  const listPath = `${SANDBOX_WORK_DIR}/candidates-${randomUUID()}.json`;
   const index = new EventIndex();
 
   const stream = await client.sessions.createTurnStream(sessionId, {
@@ -325,11 +306,31 @@ export async function checkTextAgainstData(
     );
   }
 
+  // Every field must be present and the right type. A partial payload previously read
+  // as `leaked: false`, which is the one interpretation this must never default to:
+  // callers waive real pattern hits on the strength of this result.
+  if (
+    typeof payload.leaked !== 'boolean' ||
+    !Array.isArray(payload.matches) ||
+    typeof payload.values_compared !== 'number' ||
+    !Array.isArray(payload.columns_checked)
+  ) {
+    throw new Error(
+      `The dataset comparison for run ${stamp} returned an incomplete result. ` +
+        'Refusing to treat that as clean.',
+    );
+  }
+
+  if (payload.values_compared === 0 && identifierColumns.length > 0) {
+    throw new Error(
+      `The dataset comparison for run ${stamp} compared no values, so it establishes ` +
+        'nothing. Refusing to treat that as clean.',
+    );
+  }
+
   return {
-    leaked: payload.leaked === true,
-    matches: Array.isArray(payload.matches)
-      ? (payload.matches as Array<{ column: string; distinct_values_found: number }>)
-      : [],
-    valuesCompared: typeof payload.values_compared === 'number' ? payload.values_compared : 0,
+    leaked: payload.leaked,
+    matches: payload.matches as Array<{ column: string; distinct_values_found: number }>,
+    valuesCompared: payload.values_compared,
   };
 }

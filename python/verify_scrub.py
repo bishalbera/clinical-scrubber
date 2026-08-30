@@ -1,14 +1,5 @@
 #!/usr/bin/env python3
-"""Check that a scrubbed dataset is actually scrubbed, inside the sandbox.
-
-The Compliance subagent authors its own `scrub.py`, so nothing about the result is
-guaranteed by construction. This re-reads the output and reports whether identifiers
-survived, in the same shape as `classify.py`: verdicts and counts, never values.
-
-The canary check is the sharp one. `.canary.json` holds values the model has never
-seen; if either appears anywhere in the scrubbed file, the scrub left a real patient
-identifier behind. Only the boolean crosses back.
-"""
+"""Checks that a scrubbed dataset is actually scrubbed."""
 
 from __future__ import annotations
 
@@ -75,9 +66,13 @@ def verify(
             result["passed"] = False
             result["error"] = f"canary file is not valid JSON: {exc.msg}"
             return result
-        if not isinstance(canary, dict) or not canary.get("ssn") or not canary.get("name"):
+        # Non-empty strings specifically: canary_survived only searches string values,
+        # so a truthy non-string would skip the search and report a clean scrub.
+        if not isinstance(canary, dict) or not all(
+            isinstance(canary.get(k), str) and canary.get(k) for k in ("ssn", "name")
+        ):
             result["passed"] = False
-            result["error"] = "canary file is missing ssn or name"
+            result["error"] = "canary file needs non-empty string ssn and name"
             return result
 
         present = canary_survived(scrubbed_path.read_text(encoding="utf-8"), canary)
@@ -90,11 +85,17 @@ def verify(
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Verify a scrubbed dataset.")
     parser.add_argument("scrubbed_path", type=Path)
-    parser.add_argument("--canary", type=Path, default=None)
+    parser.add_argument(
+        "--canary",
+        type=Path,
+        default=None,
+        help="defaults to .canary.json beside the scrubbed file; callers need not name it",
+    )
     parser.add_argument("--run-id", default=None, help="binds the result to one run")
     args = parser.parse_args(argv)
 
-    result = verify(args.scrubbed_path, args.canary, args.run_id)
+    canary = args.canary or (args.scrubbed_path.parent / ".canary.json")
+    result = verify(args.scrubbed_path, canary, args.run_id)
     print(json.dumps(result, indent=2))
     return 0 if result["passed"] else 1
 

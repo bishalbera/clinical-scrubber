@@ -1,12 +1,4 @@
-/**
- * Phase 2: materialise the raw dataset inside the sandbox and classify its columns
- * without any value crossing back.
- *
- * The verdict is read from the tool response rather than the model's summary of it,
- * the canary comes back over the file-download endpoint, and the guard runs over the
- * whole transcript before this returns.
- */
-
+/** Generates the dataset in the sandbox and classifies its columns. */
 import type { TrueForge } from '@truefoundry/trueforge-sdk';
 import { randomUUID } from 'node:crypto';
 import { dirname, resolve } from 'node:path';

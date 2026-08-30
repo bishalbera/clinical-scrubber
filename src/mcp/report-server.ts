@@ -1,17 +1,4 @@
-/**
- * A minimal MCP server hosting the one tool the CMO must approve.
- *
- * The brief assumed a gated tool could be declared on the agent. It cannot:
- * `require_approval_for_tools` is configured per MCP server, and TrueForge only
- * accepts `remote` servers addressed by URL. So the approval gate needs a real MCP
- * server, and this is the smallest one that carries it.
- *
- * The tool deliberately does almost nothing. Its job is to be the point at which the
- * run stops and waits for a person — the report itself is drafted from aggregates the
- * pipeline already holds. Writing it here would put the report's contents on the wrong
- * side of the approval, since the tool only runs once approval is granted.
- */
-
+/** MCP server hosting the approval-gated report release tool. */
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 
 export const REPORT_TOOL_NAME = 'generate_final_report';

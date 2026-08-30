@@ -155,7 +155,7 @@ def test_canary_file_without_values_fails(tmp_path: Path):
     result = verify_scrub.verify(write(tmp_path, frame), bad)
 
     assert result["passed"] is False
-    assert "missing ssn or name" in str(result["error"])
+    assert "non-empty string" in str(result["error"])
 
 
 def test_surviving_study_id_fails_the_check(tmp_path: Path):
@@ -184,3 +184,35 @@ def test_run_id_is_echoed(tmp_path: Path):
     result = verify_scrub.verify(write(tmp_path, frame), None, "run-abc")
 
     assert result["run_id"] == "run-abc"
+
+
+def test_canary_defaults_to_the_file_beside_the_dataset(tmp_path: Path):
+    """The caller should not have to name the canary path, so no prompt has to."""
+    canary = {"ssn": "984-42-0266", "name": "Barnabas Ashdown-Vance"}
+    (tmp_path / ".canary.json").write_text(json.dumps(canary))
+    frame = pd.DataFrame({"age_band": ["45-54"], "arm": ["t"]})
+    scrubbed = write(tmp_path, frame)
+
+    result = verify_scrub.verify(scrubbed, scrubbed.parent / ".canary.json")
+    assert result["canary_present"] is False
+    assert result["passed"] is True
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"ssn": 1, "name": 2},
+        {"ssn": "900-11-2222", "name": 5},
+        {"ssn": ["900-11-2222"], "name": "A B"},
+        {"ssn": True, "name": True},
+    ],
+)
+def test_truthy_non_string_canary_is_rejected(tmp_path: Path, payload):
+    """canary_survived only searches strings, so a truthy non-string would skip it."""
+    bad = tmp_path / ".canary.json"
+    bad.write_text(json.dumps(payload))
+    frame = pd.DataFrame({"age_band": ["45-54"], "arm": ["t"]})
+
+    result = verify_scrub.verify(write(tmp_path, frame), bad)
+    assert result["passed"] is False
+    assert "non-empty string" in str(result["error"])

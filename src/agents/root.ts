@@ -1,11 +1,3 @@
-/**
- * The root agent spec.
- *
- * These instructions are intent, not enforcement — `pii-guard.ts` is what makes the
- * boundary hold. What they contribute is sufficiency: pointing the agent at a
- * classifier that already answers what it would otherwise peek to learn.
- */
-
 import type { TrueForgeApi } from '@truefoundry/trueforge-sdk';
 
 import type { RunConfig } from '../lib/client.js';
@@ -26,12 +18,18 @@ birth, email, phone, address, or measurement.
 WHAT THIS MEANS IN PRACTICE
 - Never run a command that prints file contents. No cat, head, tail, less, more, awk,
   sed, grep, or python that prints rows, cells, samples, or df.head() of a data file.
+- That includes distinct values. df.unique(), value_counts(), sorted sets of "the raw
+  strings", and printing the values that failed to parse are all disclosures of patient
+  data, even though each one is only part of a column. Print counts and shapes; never
+  the values themselves.
 - Never open a data file to "check the format" or "see what it looks like". You do not
   need to. ${'`classify.py`'} reports every column's name, dtype, populated count and
   detected identifier type. That is the format.
 - If you need to know something about the data that you have not been told, write a
   script that computes it and prints only the aggregate. Never print the input.
 - Working directory for all pipeline files is ${SANDBOX_WORK_DIR}.
+- Never read a file whose name begins with a dot. Those are audit artifacts belonging to
+  the compliance system, not inputs to your work, and reading one is itself a breach.
 
 Run the commands you are given exactly as written. When reporting results, report what
 the tools printed. Do not invent, extrapolate, or fill in values you did not receive.

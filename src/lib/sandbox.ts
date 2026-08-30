@@ -1,11 +1,4 @@
-/**
- * Sandbox helpers.
- *
- * The agent gets one system tool, `exec`, taking `{intent, command}`. Files move in
- * and out on channels the model is not part of: attachments on a user message go in,
- * the turn download endpoint brings results out.
- */
-
+/** Sandbox helpers: attachments in, file downloads out, exec result parsing. */
 import { readFileSync } from 'node:fs';
 import { basename } from 'node:path';
 

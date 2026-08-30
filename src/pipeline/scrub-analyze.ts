@@ -1,13 +1,4 @@
-/**
- * Phase 3: two subagents, both working only through the sandbox.
- *
- * Compliance authors `scrub.py` from the column verdict and produces `scrubbed.csv`.
- * Bio-Stat authors `analyze.py` and reports aggregates. Neither returns a patient
- * value, and the scripts they write are pulled back over the file endpoint rather
- * than scraped out of the transcript, so what the CMO reviews in Phase 4 is the exact
- * text that ran.
- */
-
+/** Compliance and Bio-Stat subagents: scrub, verify, analyse. */
 import type { TrueForge } from '@truefoundry/trueforge-sdk';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -89,15 +80,23 @@ STEP 1 — Compliance. Give a subagent this task:
       detail, because it re-links every row to one person. subject_pseudo_id replaces it.
     - Replace mrn with a stable pseudo-id: sha256 of the value, first 12 hex chars,
       in a new column subject_pseudo_id. Drop the original mrn.
-    - Replace dob with a 10-year age_band string (for example "45-54"), computed
-      against 2026-01-01. Drop the original dob. Dates arrive in four formats, so
-      parse defensively.
+    - Replace dob with a 10-year age_band string (for example "45-54"), taking age as
+      of the start of calendar year 2026. Drop the original dob.
+      dob arrives in exactly these four layouts and no others, so parse against this
+      list rather than inspecting the column. Mon is a three-letter English month
+      abbreviation; D and M may be one or two digits:
+        YYYY-MM-DD
+        MM/DD/YYYY
+        D Mon YYYY
+        Mon D, YYYY
+      Values may carry leading or trailing whitespace. If a value still fails to parse,
+      count it and coerce it to NaT — do not print it to find out why.
     - Keep the analysis columns, normalised: arm lowercased and trimmed to exactly
       "treatment" or "placebo"; baseline, followup and outcome_measure as floats with
       any unit suffix stripped; adverse_event as a 0/1 integer.
     - Leave rows with missing outcome data in place; do not drop participants.
   Then run:
-    python3 ${SANDBOX_UPLOAD_DIR}/verify_scrub.py ${SCRUBBED_CSV} --canary ${SANDBOX_WORK_DIR}/.canary.json --run-id ${runId}
+    python3 ${SANDBOX_UPLOAD_DIR}/verify_scrub.py ${SCRUBBED_CSV} --run-id ${runId}
   Report the verifier's JSON verbatim, plus how many columns were dropped, hashed and
   coarsened. Report counts only, never a value from any column.
 

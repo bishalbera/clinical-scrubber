@@ -1,17 +1,4 @@
-/**
- * `pnpm prove` — run the whole pipeline, then prove no patient value reached the model.
- *
- * This is the claim the project exists to support, so the output is deliberately blunt:
- * the canary value, whether it appeared, and an exit code. Everything else is working.
- *
- * What makes the proof worth anything is where the canary comes from. It is minted from
- * a CSPRNG *inside the sandbox*, written to a side file, and never printed. The
- * orchestrator reads it back over the turn file-download endpoint — a direct
- * harness-to-orchestrator call the model does not issue and cannot observe. So the model
- * has no way to know the string. If it appears anywhere in the transcript, the only
- * available explanation is that something read the raw data.
- */
-
+/** `pnpm prove` — run the pipeline, then prove no patient value reached the model. */
 import { canaryRecord } from '../lib/canary.js';
 import { adjudicateCandidates, checkTextAgainstData, sessionVisibleText } from '../lib/boundary.js';
 import { assertHarnessReachable, createClient, readRunConfig } from '../lib/client.js';

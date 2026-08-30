@@ -1,12 +1,4 @@
-/**
- * `pnpm probe:sandbox` — three answers the docs leave open, each load-bearing:
- * which Python packages the Daytona image ships, what shape sandbox tool calls and
- * responses take, and whether `downloadSandboxFile` serves undeclared paths.
- *
- * Findings so far: pandas and numpy present, scipy missing; the tool is `exec` taking
- * `{intent, command}`; undeclared paths are served.
- */
-
+/** `pnpm probe:sandbox` — what the Daytona image ships and how sandbox events look. */
 import { assertHarnessReachable, createClient, readRunConfig } from '../lib/client.js';
 import { EventIndex, type IndexedEvent } from '../lib/event-index.js';
 

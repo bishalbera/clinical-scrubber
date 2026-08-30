@@ -1,8 +1,4 @@
-/**
- * One-time setup. TrueForge only accepts `remote` MCP servers addressed by URL, so the
- * gated tool has to be registered before an agent can be given it.
- */
-
+/** `pnpm mcp:register` — register the report server and verify the harness reaches it. */
 import { assertHarnessReachable, readRunConfig } from '../lib/client.js';
 import { REPORT_MCP_SERVER, reportServerUrl, startReportServer } from '../mcp/report-server.js';
 

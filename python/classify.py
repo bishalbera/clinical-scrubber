@@ -1,14 +1,5 @@
 #!/usr/bin/env python3
-"""Schema-only PII classification, run inside the TrueForge sandbox.
-
-Reads the raw CSV, runs pattern detectors over every value, and emits a verdict: per
-column its name, dtype, populated count, detected identifier type and match rate. The
-values themselves never leave this process.
-
-`example` is `None` at the point of construction, not blanked before output, so there
-is no code path that can assign a value to it. `assert_no_values_leaked` re-reads the
-rendered JSON as a backstop.
-"""
+"""Schema-only PII classification, run inside the sandbox."""
 
 from __future__ import annotations
 

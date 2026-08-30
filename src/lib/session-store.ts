@@ -1,11 +1,4 @@
-/**
- * Remembers which TrueForge session this project is using, so runs share a sandbox
- * instead of cold-starting a new one.
- *
- * Daytona auto-stops after an idle interval and eventually archives, so a remembered
- * session is a hint, not a guarantee.
- */
-
+/** Remembers the session so runs share a warm sandbox. */
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';

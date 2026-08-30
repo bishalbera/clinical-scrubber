@@ -1,5 +1,4 @@
 /** TrueForge client factory and shared run configuration. */
-
 import { config as loadDotenv } from 'dotenv';
 import { TrueForge } from '@truefoundry/trueforge-sdk';
 
