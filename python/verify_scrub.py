@@ -66,9 +66,13 @@ def verify(
             result["passed"] = False
             result["error"] = f"canary file is not valid JSON: {exc.msg}"
             return result
-        if not isinstance(canary, dict) or not canary.get("ssn") or not canary.get("name"):
+        # Non-empty strings specifically: canary_survived only searches string values,
+        # so a truthy non-string would skip the search and report a clean scrub.
+        if not isinstance(canary, dict) or not all(
+            isinstance(canary.get(k), str) and canary.get(k) for k in ("ssn", "name")
+        ):
             result["passed"] = False
-            result["error"] = "canary file is missing ssn or name"
+            result["error"] = "canary file needs non-empty string ssn and name"
             return result
 
         present = canary_survived(scrubbed_path.read_text(encoding="utf-8"), canary)

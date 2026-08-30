@@ -80,14 +80,15 @@ STEP 1 — Compliance. Give a subagent this task:
       detail, because it re-links every row to one person. subject_pseudo_id replaces it.
     - Replace mrn with a stable pseudo-id: sha256 of the value, first 12 hex chars,
       in a new column subject_pseudo_id. Drop the original mrn.
-    - Replace dob with a 10-year age_band string (for example "45-54"), computed
-      against 2026-01-01. Drop the original dob.
-      dob arrives in exactly these four formats and no others, so parse against this
-      list rather than inspecting the column:
-        YYYY-MM-DD      e.g. 1981-12-07
-        MM/DD/YYYY      e.g. 12/07/1981
-        D Mon YYYY      e.g. 7 Dec 1981
-        Mon D, YYYY     e.g. Dec 7, 1981
+    - Replace dob with a 10-year age_band string (for example "45-54"), taking age as
+      of the start of calendar year 2026. Drop the original dob.
+      dob arrives in exactly these four layouts and no others, so parse against this
+      list rather than inspecting the column. Mon is a three-letter English month
+      abbreviation; D and M may be one or two digits:
+        YYYY-MM-DD
+        MM/DD/YYYY
+        D Mon YYYY
+        Mon D, YYYY
       Values may carry leading or trailing whitespace. If a value still fails to parse,
       count it and coerce it to NaT — do not print it to find out why.
     - Keep the analysis columns, normalised: arm lowercased and trimmed to exactly

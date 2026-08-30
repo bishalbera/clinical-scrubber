@@ -306,11 +306,31 @@ export async function checkTextAgainstData(
     );
   }
 
+  // Every field must be present and the right type. A partial payload previously read
+  // as `leaked: false`, which is the one interpretation this must never default to:
+  // callers waive real pattern hits on the strength of this result.
+  if (
+    typeof payload.leaked !== 'boolean' ||
+    !Array.isArray(payload.matches) ||
+    typeof payload.values_compared !== 'number' ||
+    !Array.isArray(payload.columns_checked)
+  ) {
+    throw new Error(
+      `The dataset comparison for run ${stamp} returned an incomplete result. ` +
+        'Refusing to treat that as clean.',
+    );
+  }
+
+  if (payload.values_compared === 0 && identifierColumns.length > 0) {
+    throw new Error(
+      `The dataset comparison for run ${stamp} compared no values, so it establishes ` +
+        'nothing. Refusing to treat that as clean.',
+    );
+  }
+
   return {
-    leaked: payload.leaked === true,
-    matches: Array.isArray(payload.matches)
-      ? (payload.matches as Array<{ column: string; distinct_values_found: number }>)
-      : [],
-    valuesCompared: typeof payload.values_compared === 'number' ? payload.values_compared : 0,
+    leaked: payload.leaked,
+    matches: payload.matches as Array<{ column: string; distinct_values_found: number }>,
+    valuesCompared: payload.values_compared,
   };
 }
