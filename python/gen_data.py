@@ -1,14 +1,5 @@
 #!/usr/bin/env python3
-"""Synthetic clinical-trial data generator.
-
-All data is fabricated; see the guardrails in README.md. The output is deliberately
-messy: mixed casing, four date formats, units glued onto numbers, dropout gaps.
-
-Two constraints keep the leak proof honest. This file is standard-library only, so it
-runs in the sandbox with no install step. And the canary is minted from `secrets` at
-run time and written to a side file rather than hard-coded, because a literal here
-would reach the model along with the script and break the proof.
-"""
+"""Synthetic clinical-trial data generator. All values are fabricated."""
 
 from __future__ import annotations
 

@@ -1,11 +1,4 @@
-/**
- * `pnpm probe:upload` — does a file attached to a user message land in the sandbox,
- * byte-identical, without its contents entering model context?
- *
- * Both answers are yes; this re-verifies them against a future harness build. Asks
- * only for paths and hashes, never contents.
- */
-
+/** `pnpm probe:upload` — assert attachments arrive intact and stay out of model context. */
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { dirname, resolve } from 'node:path';

@@ -1,18 +1,5 @@
 #!/usr/bin/env python3
-"""Compare text against every identifier value in the dataset, inside the sandbox.
-
-The PII guard matches identifier *shapes* — SSNs, emails, phone numbers. That leaves a
-hole: a patient name and a subject id look like ordinary words, match no pattern, and
-would pass a shape-based check untouched.
-
-The only way to know whether a piece of text contains a patient value is to compare it
-against the actual values, and those live in the sandbox. So the text comes here rather
-than the data going out. Whatever is checked — a transcript, a drafted report — is
-already model-visible or destined to be, so sending it in exposes nothing new.
-
-What comes back is counts per column. No value is ever echoed, and columns are named
-but their contents are not.
-"""
+"""Compares text against every identifier value in the dataset."""
 
 from __future__ import annotations
 

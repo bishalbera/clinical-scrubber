@@ -1,16 +1,4 @@
-/**
- * Per-thread event index over a TrueForge turn stream.
- *
- * Model output arrives as a base `model.message` plus a run of `model.message.delta`
- * fragments sharing its `id`, so deltas must be merged to recover the full text.
- * Events are bucketed by `threadId`: `'main'` for the root agent, a generated id per
- * subagent, `null` for turn-level.
- *
- * {@link EventIndex.allModelVisibleText} is the important part: it reconstructs
- * everything the model could have seen as one string, which is the sole input to the
- * PII guard and the basis of the leak proof.
- */
-
+/** Per-thread event index over a TrueForge turn stream, merging deltas. */
 import { isEventDelta, mergeEventDelta } from '@truefoundry/trueforge-sdk';
 
 /**

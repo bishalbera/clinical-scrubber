@@ -176,16 +176,16 @@ Every substantive change went through a pull request reviewed by Qodo before mer
 
 - **Representative PR:** [#2 — sandbox ingest with schema-only PII classification and
   leak guard](https://github.com/bishalbera/clinical-scrubber/pull/2)
-- **Full history:** [#1](https://github.com/bishalbera/clinical-scrubber/pull/1) ·
-  [#2](https://github.com/bishalbera/clinical-scrubber/pull/2) ·
-  [#3](https://github.com/bishalbera/clinical-scrubber/pull/3) ·
-  [#4](https://github.com/bishalbera/clinical-scrubber/pull/4) ·
-  [#5](https://github.com/bishalbera/clinical-scrubber/pull/5)
+- **Full history:** [every pull request in this
+  repository](https://github.com/bishalbera/clinical-scrubber/pulls?q=is%3Apr), each with
+  its review, the decisions taken on it, and a follow-up review against the final code
 
-Across those five PRs Qodo raised **26 findings — 19 High, 7 Medium**. All were
-resolved except one, which was partly accepted with the reasoning recorded in its
-thread. Each PR followed the same loop: review, fixes pushed to the same branch,
-follow-up review against the final code, then a human merge.
+Qodo reviewed every pull request here and raised findings on all of them, mostly rated
+High. All were resolved except one, which was partly accepted with the reasoning
+recorded in its thread. Each PR followed the same loop: review, fixes pushed to the
+same branch, follow-up review against the final code, then a human merge. The counts
+and the threads are in the PRs themselves rather than repeated here, where they would
+go out of date on the next review.
 
 ### What it surfaced
 
@@ -216,6 +216,11 @@ typecheck and clean lint — every one sat in a path the tests never exercised.
 - **Error messages were a disclosure channel.** Three separate failure paths quoted raw
   sandbox output into text that reaches a terminal and shell history — and the command
   most likely to fail is one that printed something it should not have.
+- **The documentation claimed more than the code did.** Reviewing this README, Qodo
+  found that the pipeline's final check compared identifier _shapes_ but not real
+  values, while the text said it proved no patient value reached the model; and that
+  `pnpm probe:upload` printed its observations without asserting them, so it could not
+  fail. Both were fixed in the code rather than softened in the prose.
 
 ### Intentionally dismissed
 

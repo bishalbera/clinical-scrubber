@@ -1,16 +1,4 @@
-/**
- *
- * The point of this gate is that the CMO approves the *method*, not a button. So the
- * packet carries both agent-authored scripts in full — the de-identification rules and
- * the statistical methodology — alongside the aggregate results. Those scripts are the
- * ones pulled out of the sandbox by file download, so they are the exact text that ran
- * rather than a summary of it.
- *
- * A denial is not a stop. The reason goes back to the agent, which revises and presents
- * again, and the loop continues until the CMO approves or the attempt limit is reached.
- * Nothing is released on a denial.
- */
-
+/** The CMO approval loop: review packet, deny-and-revise, release. */
 import type { EventIndex } from '../lib/event-index.js';
 import { type IndexedEvent } from '../lib/event-index.js';
 import { REPORT_TOOL_NAME } from '../mcp/report-server.js';

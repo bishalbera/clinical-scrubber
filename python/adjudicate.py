@@ -1,16 +1,5 @@
 #!/usr/bin/env python3
-"""Decide whether identifier-shaped strings seen in model context came from the data.
-
-The PII guard flags anything shaped like an identifier, which is the right default but
-cannot tell a leaked patient value from an example an agent typed into its own code.
-Guessing either way is wrong: treat every match as a leak and the guard cries wolf
-until someone disables it; treat none as a leak and it only catches the one planted
-canary row.
-
-So the question is settled where the data actually is. The candidate strings are
-already model-visible — they came out of the transcript — so sending them in exposes
-nothing new. What comes back is a count per candidate and nothing else.
-"""
+"""Decides whether identifier-shaped strings came from the data."""
 
 from __future__ import annotations
 

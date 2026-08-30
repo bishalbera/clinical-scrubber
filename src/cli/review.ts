@@ -1,10 +1,4 @@
-/**
- * Runs ingest, scrub and analysis, then asks the agent to release the report. That
- * call is gated, so the turn pauses and this prints the review packet: both
- * agent-authored scripts in full, the aggregate results, and what would be released.
- * Approve and it proceeds; deny with a reason and the agent revises and comes back.
- */
-
+/** `pnpm review` — the full pipeline, pausing for CMO approval. */
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { createInterface } from 'node:readline/promises';
@@ -212,8 +206,11 @@ async function main(): Promise<void> {
 
       // Fetched over the download channel, which the guard never sees. Anything printed
       // or written to disk from there has to be checked here instead.
+      // Canary hits are proof and fail immediately. Identifier-shaped hits are not:
+      // the report legitimately cites the age-band reference date. Those are settled by
+      // the value comparison below, against the real data.
       const reportGuard = scanModelVisibleText(raw, { canaries: canaryRecord(ingest.canaries) });
-      if (!reportGuard.clean) {
+      if (!reportGuard.canaryClean) {
         throw new Error(
           `${reportMd} contains patient-shaped values and will not be written.\n\n` +
             formatGuardResult(reportGuard),

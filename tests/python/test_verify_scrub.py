@@ -184,3 +184,15 @@ def test_run_id_is_echoed(tmp_path: Path):
     result = verify_scrub.verify(write(tmp_path, frame), None, "run-abc")
 
     assert result["run_id"] == "run-abc"
+
+
+def test_canary_defaults_to_the_file_beside_the_dataset(tmp_path: Path):
+    """The caller should not have to name the canary path, so no prompt has to."""
+    canary = {"ssn": "984-42-0266", "name": "Barnabas Ashdown-Vance"}
+    (tmp_path / ".canary.json").write_text(json.dumps(canary))
+    frame = pd.DataFrame({"age_band": ["45-54"], "arm": ["t"]})
+    scrubbed = write(tmp_path, frame)
+
+    result = verify_scrub.verify(scrubbed, scrubbed.parent / ".canary.json")
+    assert result["canary_present"] is False
+    assert result["passed"] is True

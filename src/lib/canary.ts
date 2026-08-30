@@ -1,11 +1,4 @@
-/**
- * The canary side channel.
- *
- * `gen_data.py` mints the canary inside the sandbox and writes it to `.canary.json`
- * without printing it. The orchestrator reads it back over the turn file-download
- * endpoint, so the model never sees the value.
- */
-
+/** Reads the canary the sandbox minted, via the file-download side channel. */
 /** Where `gen_data.py` writes the side file, relative to the dataset directory. */
 export const CANARY_FILENAME = '.canary.json';
 
